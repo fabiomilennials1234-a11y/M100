@@ -13,7 +13,8 @@
     "isolatedModules": true,
     "noEmit": true,
     "paths": {
-      "@motor100/shared": ["../../packages/shared/src"]
+      "@motor100/shared": ["../../packages/shared/src"],
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src"]

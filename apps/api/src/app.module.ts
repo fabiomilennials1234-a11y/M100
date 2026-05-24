@@ -14,6 +14,7 @@ import { GuardrailModule } from './guardrail/guardrail.module';
 import { MediaModule } from './media/media.module';
 import { MemoryModule } from './memory/memory.module';
 import { SummaryModule } from './summary/summary.module';
+import { ApiModule } from './api/api.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { SummaryModule } from './summary/summary.module';
     MediaModule,
     MemoryModule,
     SummaryModule,
+    ApiModule,
   ],
 })
 export class AppModule {}
