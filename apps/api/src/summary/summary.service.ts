@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MemoryService } from '../memory/memory.service';
+import { SummaryPort } from '@motor100/shared';
 import axios from 'axios';
 
 @Injectable()
-export class SummaryService {
+export class SummaryService implements SummaryPort {
   constructor(
     private readonly prisma: PrismaService,
     private readonly memory: MemoryService,

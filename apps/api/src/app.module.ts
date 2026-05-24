@@ -2,18 +2,19 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { BullModule } from '@nestjs/bullmq';
-import { PrismaModule } from './prisma/prisma.module';
-import { TracingModule } from './tracing/tracing.module';
-import { ConversationModule } from './conversation/conversation.module';
-import { RoutingModule } from './routing/routing.module';
-import { AiModule } from './ai/ai.module';
-import { ChannelModule } from './channel/channel.module';
-import { IntegrationModule } from './integration/integration.module';
-import { AgentModule } from './agent/agent.module';
-import { GuardrailModule } from './guardrail/guardrail.module';
-import { MediaModule } from './media/media.module';
-import { MemoryModule } from './memory/memory.module';
-import { SummaryModule } from './summary/summary.module';
+import { PrismaModule } from './prisma';
+import { TracingModule } from './tracing';
+import { ConversationModule } from './conversation';
+import { RoutingModule } from './routing';
+import { AiModule } from './ai';
+import { ChannelModule } from './channel';
+import { IntegrationModule } from './integration';
+import { AgentModule } from './agent';
+import { GuardrailModule } from './guardrail';
+import { MediaModule } from './media';
+import { MemoryModule } from './memory';
+import { SummaryModule } from './summary';
+import { ApiModule } from './api';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { SummaryModule } from './summary/summary.module';
     MediaModule,
     MemoryModule,
     SummaryModule,
+    ApiModule,
   ],
 })
 export class AppModule {}

@@ -88,6 +88,16 @@ export class ConversationService {
         to: targetStatus,
       });
 
+      const previousOwner = conversation.ownerType;
+      if (previousOwner !== ownerType) {
+        this.events.emit(DomainEvent.CONVERSATION_OWNER_CHANGED, {
+          conversationId: conversation.id,
+          from: previousOwner,
+          to: ownerType,
+          conversation: updated,
+        });
+      }
+
       if (targetStatus === ConversationStatus.ENCERRADA) {
         this.events.emit(DomainEvent.CONVERSATION_CLOSED, { conversation: updated });
       }
@@ -152,5 +162,64 @@ export class ConversationService {
 
   async close(conversationId: string): Promise<Conversation> {
     return this.transition(conversationId, ConversationStatus.ENCERRADA);
+  }
+
+  async findById(id: string) {
+    return this.prisma.conversation.findUnique({
+      where: { id },
+      include: { agent: true },
+    });
+  }
+
+  async findMany(filter: { status?: string; ownerType?: string; agentId?: string }) {
+    const where: any = {};
+    if (filter.status) where.status = filter.status;
+    if (filter.ownerType) where.ownerType = filter.ownerType;
+    if (filter.agentId) where.agentId = filter.agentId;
+
+    return this.prisma.conversation.findMany({
+      where,
+      orderBy: { updatedAt: 'desc' },
+      include: { agent: true },
+    });
+  }
+
+  async getMessages(conversationId: string, take = 50, skip = 0) {
+    return this.prisma.message.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: 'asc' },
+      take,
+      skip,
+    });
+  }
+
+  async getMetrics() {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const [active, queued, aiHandled, humanHandled, closedToday] = await Promise.all([
+      this.prisma.conversation.count({ where: { status: { not: 'encerrada' } } }),
+      this.prisma.conversation.count({ where: { status: 'na_fila' } }),
+      this.prisma.conversation.count({ where: { ownerType: 'ai', status: { not: 'encerrada' } } }),
+      this.prisma.conversation.count({ where: { ownerType: 'agent', status: { not: 'encerrada' } } }),
+      this.prisma.conversation.count({ where: { status: 'encerrada', closedAt: { gte: startOfDay } } }),
+    ]);
+
+    return { active, queued, aiHandled, humanHandled, closedToday };
+  }
+
+  async handleOutboundMessage(conversationId: string, content: string, senderType: string) {
+    const message = await this.prisma.message.create({
+      data: {
+        conversationId,
+        content,
+        sender: senderType as any,
+        direction: 'outbound',
+        type: 'text',
+      },
+    });
+
+    this.events.emit(DomainEvent.MESSAGE_SENT, { conversationId, message });
+    return message;
   }
 }

@@ -11,4 +11,5 @@ export interface AIDecision {
 
 export interface AIProvider {
   generateResponse(conversationId: string, messages: Array<{ role: string; content: string }>): Promise<AIDecision>;
+  processMessage(conversationId: string): Promise<AIDecision>;
 }

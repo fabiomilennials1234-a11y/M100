@@ -1,5 +1,5 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
+import { OnEvent, EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue, Job } from 'bullmq';
 import { ConversationService } from '../conversation/conversation.service';
@@ -7,7 +7,7 @@ import { AiService } from '../ai/ai.service';
 import { ChannelService } from '../channel/channel.service';
 import { GuardrailService } from '../guardrail/guardrail.service';
 import { SummaryService } from '../summary/summary.service';
-import { AIAction, DomainEvent, TracingProvider } from '@motor100/shared';
+import { AIAction, DomainEvent, TracingProvider, RoutingPort, ROUTING_PORT } from '@motor100/shared';
 import { TRACING_PROVIDER } from '../tracing/tracing.constants';
 
 const SUMMARY_THRESHOLD = 10;
@@ -28,6 +28,8 @@ export class MessageProcessorService {
     private readonly summaryService: SummaryService,
     @InjectQueue('message-processing') private readonly queue: Queue,
     @Inject(TRACING_PROVIDER) private readonly tracing: TracingProvider,
+    private readonly events: EventEmitter2,
+    @Inject(ROUTING_PORT) private readonly routing: RoutingPort,
   ) {}
 
   @OnEvent(DomainEvent.DEBOUNCE_FLUSHED)
@@ -78,6 +80,8 @@ export class MessageProcessorService {
       const decision = await this.aiService.processMessage(conversation.id);
       spanAi.end({ action: decision.action, reason: decision.reason });
 
+      this.events.emit(DomainEvent.AI_RESPONSE_GENERATED, { conversation, decision });
+
       if (decision.action === AIAction.RESPOND && decision.message) {
         const spanGuardrailOut = trace.startSpan('guardrail.validateOutput');
         const validation = this.guardrailService.validateOutput(decision.message);
@@ -87,7 +91,17 @@ export class MessageProcessorService {
           this.logger.warn(`Output guardrail blocked: ${validation.reason}`);
           const spanHandoff = trace.startSpan('conversation.handoff');
           await this.conversationService.requestHandoff(conversation.id);
-          spanHandoff.end({ handoff: true, reason: validation.reason });
+
+          const routingResult = await this.routing.assignBestAgent(conversation.id);
+          if (routingResult.assigned) {
+            await this.conversationService.assignAgent(conversation.id, routingResult.agentId);
+            this.events.emit(DomainEvent.HANDOFF_COMPLETED, {
+              conversationId: conversation.id,
+              agentId: routingResult.agentId,
+            });
+          }
+
+          spanHandoff.end({ handoff: true, reason: validation.reason, assigned: routingResult.assigned });
           return;
         }
 
@@ -101,7 +115,20 @@ export class MessageProcessorService {
       } else if (decision.action === AIAction.HANDOFF) {
         const spanHandoff = trace.startSpan('conversation.handoff');
         await this.conversationService.requestHandoff(conversation.id);
-        spanHandoff.end({ handoff: true });
+
+        const spanRouting = trace.startSpan('routing.assignBestAgent');
+        const routingResult = await this.routing.assignBestAgent(conversation.id);
+        spanRouting.end(routingResult);
+
+        if (routingResult.assigned) {
+          await this.conversationService.assignAgent(conversation.id, routingResult.agentId);
+          this.events.emit(DomainEvent.HANDOFF_COMPLETED, {
+            conversationId: conversation.id,
+            agentId: routingResult.agentId,
+          });
+        }
+
+        spanHandoff.end({ handoff: true, assigned: routingResult.assigned });
       }
     } finally {
       trace.end();

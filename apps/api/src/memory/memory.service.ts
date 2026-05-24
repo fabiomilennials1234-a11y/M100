@@ -1,16 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { MemoryChunk, MemoryPort } from '@motor100/shared';
 import axios from 'axios';
 
-export interface MemoryChunk {
-  text: string;
-  similarity: number;
-  createdAt: Date;
-}
-
 @Injectable()
-export class MemoryService {
+export class MemoryService implements MemoryPort {
   private readonly supabaseUrl: string;
   private readonly supabaseKey: string;
 

@@ -94,4 +94,22 @@ describe('GuardrailService', () => {
       expect(result.action).toBe('pass');
     });
   });
+
+  describe('interceptToolCall', () => {
+    it('allows all tool calls in MVP passthrough mode', () => {
+      const result = service.interceptToolCall('erp.createOrder', { orderId: '123', amount: 500 });
+      expect(result.allowed).toBe(true);
+    });
+  });
+
+  describe('requestHumanApproval', () => {
+    it('auto-approves all requests in MVP passthrough mode', async () => {
+      const result = await service.requestHumanApproval({
+        conversationId: 'conv-1',
+        action: 'refund',
+        details: { amount: 1000 },
+      });
+      expect(result.approved).toBe(true);
+    });
+  });
 });

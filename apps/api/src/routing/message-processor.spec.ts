@@ -6,7 +6,7 @@ import { AiService } from '../ai/ai.service';
 import { ChannelService } from '../channel/channel.service';
 import { GuardrailService } from '../guardrail/guardrail.service';
 import { SummaryService } from '../summary/summary.service';
-import { AIAction, DomainEvent } from '@motor100/shared';
+import { AIAction, DomainEvent, ROUTING_PORT } from '@motor100/shared';
 import { getQueueToken } from '@nestjs/bullmq';
 import { TRACING_PROVIDER } from '../tracing/tracing.constants';
 import { NoopTracingProvider } from '../tracing/noop-tracing.provider';
@@ -20,6 +20,7 @@ describe('MessageProcessorService', () => {
   let summaryService: any;
   let events: any;
   let mockQueue: any;
+  let routingPort: any;
 
   beforeEach(async () => {
     conversationService = {
@@ -63,6 +64,10 @@ describe('MessageProcessorService', () => {
       add: jest.fn().mockResolvedValue({ id: 'job-1' }),
     };
 
+    routingPort = {
+      assignBestAgent: jest.fn().mockResolvedValue({ assigned: false, reason: 'no_agent_available' }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MessageProcessorService,
@@ -74,6 +79,7 @@ describe('MessageProcessorService', () => {
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: getQueueToken('message-processing'), useValue: mockQueue },
         { provide: TRACING_PROVIDER, useValue: new NoopTracingProvider() },
+        { provide: ROUTING_PORT, useValue: routingPort },
       ],
     }).compile();
 
@@ -210,6 +216,71 @@ describe('MessageProcessorService', () => {
       await service.processJob(job as any);
 
       expect(summaryService.generateProgressiveSummary).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('handoff pipeline', () => {
+    it('calls routing to assign agent after AI handoff', async () => {
+      aiService.processMessage.mockResolvedValue({
+        action: AIAction.HANDOFF,
+        reason: 'complex issue',
+      });
+      routingPort.assignBestAgent.mockResolvedValue({ assigned: true, agentId: 'agent-1' });
+      conversationService.assignAgent = jest.fn();
+
+      const job = { data: { phone: '+5511999990000', content: 'Preciso falar com humano' } };
+      await service.processJob(job as any);
+
+      expect(conversationService.requestHandoff).toHaveBeenCalledWith('conv-1');
+      expect(routingPort.assignBestAgent).toHaveBeenCalledWith('conv-1');
+      expect(conversationService.assignAgent).toHaveBeenCalledWith('conv-1', 'agent-1');
+    });
+
+    it('emits HANDOFF_COMPLETED when agent assigned after handoff', async () => {
+      aiService.processMessage.mockResolvedValue({
+        action: AIAction.HANDOFF,
+        reason: 'complex issue',
+      });
+      routingPort.assignBestAgent.mockResolvedValue({ assigned: true, agentId: 'agent-1' });
+      conversationService.assignAgent = jest.fn();
+
+      const job = { data: { phone: '+5511999990000', content: 'Preciso falar com humano' } };
+      await service.processJob(job as any);
+
+      expect(events.emit).toHaveBeenCalledWith(
+        DomainEvent.HANDOFF_COMPLETED,
+        expect.objectContaining({ conversationId: 'conv-1', agentId: 'agent-1' }),
+      );
+    });
+
+    it('does NOT emit HANDOFF_COMPLETED when no agent available', async () => {
+      aiService.processMessage.mockResolvedValue({
+        action: AIAction.HANDOFF,
+        reason: 'complex issue',
+      });
+      routingPort.assignBestAgent.mockResolvedValue({ assigned: false, reason: 'no_agent_available' });
+
+      const job = { data: { phone: '+5511999990000', content: 'Preciso falar com humano' } };
+      await service.processJob(job as any);
+
+      const handoffCalls = events.emit.mock.calls.filter(
+        (c: any[]) => c[0] === DomainEvent.HANDOFF_COMPLETED,
+      );
+      expect(handoffCalls).toHaveLength(0);
+    });
+
+    it('leaves conversation in queue when no agent available', async () => {
+      aiService.processMessage.mockResolvedValue({
+        action: AIAction.HANDOFF,
+        reason: 'complex issue',
+      });
+      routingPort.assignBestAgent.mockResolvedValue({ assigned: false, reason: 'no_agent_available' });
+
+      const job = { data: { phone: '+5511999990000', content: 'Preciso falar com humano' } };
+      await service.processJob(job as any);
+
+      expect(conversationService.requestHandoff).toHaveBeenCalledWith('conv-1');
+      expect(routingPort.assignBestAgent).toHaveBeenCalledWith('conv-1');
     });
   });
 });

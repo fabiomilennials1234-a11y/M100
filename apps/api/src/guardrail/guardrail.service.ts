@@ -1,20 +1,15 @@
 import { Injectable } from '@nestjs/common';
-
-export interface InputSanitization {
-  sanitized: string;
-  piiRedacted: boolean;
-  injectionFlagged: boolean;
-  flags: string[];
-}
-
-export interface OutputValidation {
-  valid: boolean;
-  action: 'pass' | 'handoff';
-  reason?: string;
-}
+import {
+  GuardrailPort,
+  SanitizationResult,
+  ValidationResult,
+  ToolInterceptionResult,
+  ApprovalContext,
+  ApprovalResult,
+} from '@motor100/shared';
 
 @Injectable()
-export class GuardrailService {
+export class GuardrailService implements GuardrailPort {
   private readonly PII_PATTERNS: Array<{ regex: RegExp; token: string; flag: string }> = [
     { regex: /\d{3}\.\d{3}\.\d{3}-\d{2}/g, token: '[CPF_REDACTED]', flag: 'cpf_redacted' },
     { regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, token: '[EMAIL_REDACTED]', flag: 'email_redacted' },
@@ -35,7 +30,7 @@ export class GuardrailService {
     /pretend\s+you\s+are/i,
   ];
 
-  sanitizeInput(text: string): InputSanitization {
+  sanitizeInput(text: string): SanitizationResult {
     const flags: string[] = [];
     let sanitized = text;
 
@@ -73,7 +68,7 @@ export class GuardrailService {
     /número\s+do\s+cartão/i,
   ];
 
-  validateOutput(text: string): OutputValidation {
+  validateOutput(text: string): ValidationResult {
     if (text.length > this.MAX_OUTPUT_LENGTH) {
       return { valid: false, action: 'handoff', reason: 'output_length_exceeded' };
     }
@@ -91,5 +86,13 @@ export class GuardrailService {
     }
 
     return { valid: true, action: 'pass' };
+  }
+
+  interceptToolCall(_toolName: string, _args: Record<string, unknown>): ToolInterceptionResult {
+    return { allowed: true };
+  }
+
+  async requestHumanApproval(_context: ApprovalContext): Promise<ApprovalResult> {
+    return { approved: true };
   }
 }

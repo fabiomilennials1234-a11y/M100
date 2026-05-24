@@ -1,0 +1,9 @@
+export const CONVERSATION_PORT = 'CONVERSATION_PORT';
+export const AI_PORT = 'AI_PORT';
+export const CHANNEL_PORT = 'CHANNEL_PORT';
+export const GUARDRAIL_PORT = 'GUARDRAIL_PORT';
+export const SUMMARY_PORT = 'SUMMARY_PORT';
+export const MEMORY_PORT = 'MEMORY_PORT';
+export const ROUTING_PORT = 'ROUTING_PORT';
+export const AGENT_PORT = 'AGENT_PORT';
+export const REALTIME_PORT = 'REALTIME_PORT';

@@ -28,4 +28,8 @@ export class AgentService {
       },
     });
   }
+
+  async findById(agentId: string) {
+    return this.prisma.agent.findUnique({ where: { id: agentId } });
+  }
 }

@@ -1,7 +1,5 @@
 import { Injectable, Inject, Logger, Optional } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
-import { EventEmitter2 } from '@nestjs/event-emitter';
-import { AIDecision, AIAction, AIProvider, DomainEvent } from '@motor100/shared';
+import { AIDecision, AIAction, AIProvider } from '@motor100/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { MemoryService } from '../memory/memory.service';
 import axios from 'axios';
@@ -31,7 +29,6 @@ export class AiService implements AIProvider {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly events: EventEmitter2,
     @Inject(MemoryService) @Optional() private readonly memory?: MemoryService,
   ) {
     this.apiKey = process.env.OPENROUTER_API_KEY ?? '';
@@ -118,17 +115,6 @@ export class AiService implements AIProvider {
     contextMessages.push(...recentMessages);
 
     return this.generateResponse(conversationId, contextMessages);
-  }
-
-  @OnEvent(DomainEvent.MESSAGE_RECEIVED)
-  async handleMessage(payload: { conversation: any; message: any }) {
-    if (payload.conversation.ownerType !== 'ai') return;
-
-    const decision = await this.processMessage(payload.conversation.id);
-    this.events.emit(DomainEvent.AI_RESPONSE_GENERATED, {
-      conversation: payload.conversation,
-      decision,
-    });
   }
 
   private parseDecision(raw: string): AIDecision {

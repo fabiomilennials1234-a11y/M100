@@ -1,4 +1,5 @@
 export * from './conversation';
+export * from './conversation.port';
 export * from './message';
 export * from './agent';
 export * from './ai';
@@ -6,3 +7,9 @@ export * from './events';
 export * from './channel';
 export * from './integration';
 export * from './tracing';
+export * from './ports';
+export * from './guardrail.port';
+export * from './summary.port';
+export * from './memory.port';
+export * from './routing.port';
+export * from './realtime.port';
