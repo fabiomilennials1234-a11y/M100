@@ -1,0 +1,112 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ConversationStatus {
+  nova
+  atendida_ia
+  na_fila
+  atendida_humano
+  encerrada
+}
+
+enum OwnerType {
+  ai
+  agent
+  queue
+  none
+}
+
+enum MessageDirection {
+  inbound
+  outbound
+}
+
+enum MessageType {
+  text
+  image
+  audio
+  video
+  document
+  sticker
+  location
+  contact
+}
+
+enum MessageSender {
+  customer
+  ai
+  agent
+  system
+}
+
+enum AgentRole {
+  admin
+  supervisor
+  attendant
+}
+
+enum AgentAvailability {
+  online
+  away
+  offline
+}
+
+model Conversation {
+  id            String             @id @default(uuid())
+  externalPhone String             @map("external_phone")
+  status        ConversationStatus @default(nova)
+  ownerType     OwnerType          @default(none) @map("owner_type")
+  agentId       String?            @map("agent_id")
+  version       Int                @default(1)
+  metadata      Json?
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+  closedAt      DateTime?          @map("closed_at")
+
+  agent    Agent?    @relation(fields: [agentId], references: [id])
+  messages Message[]
+
+  @@index([externalPhone])
+  @@index([status])
+  @@index([agentId])
+  @@map("conversations")
+}
+
+model Message {
+  id             String           @id @default(uuid())
+  conversationId String           @map("conversation_id")
+  externalId     String?          @unique @map("external_id")
+  direction      MessageDirection
+  type           MessageType      @default(text)
+  sender         MessageSender
+  content        String
+  mediaUrl       String?          @map("media_url")
+  metadata       Json?
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+
+  @@index([conversationId])
+  @@map("messages")
+}
+
+model Agent {
+  id           String            @id @default(uuid())
+  name         String
+  email        String            @unique
+  role         AgentRole         @default(attendant)
+  availability AgentAvailability @default(offline)
+  maxConcurrent Int              @default(5) @map("max_concurrent")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  conversations Conversation[]
+
+  @@map("agents")
+}
