@@ -1,10 +1,12 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
 }
 
 enum ConversationStatus {
@@ -63,11 +65,14 @@ model Conversation {
   status        ConversationStatus @default(nova)
   ownerType     OwnerType          @default(none) @map("owner_type")
   agentId       String?            @map("agent_id")
-  version       Int                @default(1)
-  metadata      Json?
-  createdAt     DateTime           @default(now()) @map("created_at")
-  updatedAt     DateTime           @updatedAt @map("updated_at")
-  closedAt      DateTime?          @map("closed_at")
+  version              Int                @default(1)
+  metadata             Json?
+  progressiveSummary   String?            @map("progressive_summary")
+  finalSummary         String?            @map("final_summary")
+  summaryMessageCount  Int                @default(0) @map("summary_message_count")
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+  closedAt             DateTime?          @map("closed_at")
 
   agent    Agent?    @relation(fields: [agentId], references: [id])
   messages Message[]
@@ -109,4 +114,15 @@ model Agent {
   conversations Conversation[]
 
   @@map("agents")
+}
+
+model MemoryEmbedding {
+  id        String                   @id @default(uuid())
+  phone     String
+  content   String
+  embedding Unsupported("vector(384)")
+  createdAt DateTime                 @default(now()) @map("created_at")
+
+  @@index([phone])
+  @@map("memory_embeddings")
 }

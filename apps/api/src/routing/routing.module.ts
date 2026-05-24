@@ -7,6 +7,8 @@ import { DeadLetterProcessor } from './dead-letter.processor';
 import { ConversationModule } from '../conversation/conversation.module';
 import { AiModule } from '../ai/ai.module';
 import { ChannelModule } from '../channel/channel.module';
+import { GuardrailModule } from '../guardrail/guardrail.module';
+import { SummaryModule } from '../summary/summary.module';
 
 @Module({
   imports: [
@@ -16,6 +18,8 @@ import { ChannelModule } from '../channel/channel.module';
     ConversationModule,
     AiModule,
     ChannelModule,
+    GuardrailModule,
+    SummaryModule,
   ],
   providers: [
     RoutingService,

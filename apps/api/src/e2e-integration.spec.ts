@@ -7,6 +7,9 @@ import { ChannelService } from './channel/channel.service';
 import { MessageProcessorService } from './routing/message-processor.service';
 import { ConversationService } from './conversation/conversation.service';
 import { AiService } from './ai/ai.service';
+import { GuardrailService } from './guardrail/guardrail.service';
+import { SummaryService } from './summary/summary.service';
+import { MemoryService } from './memory/memory.service';
 import { PrismaService } from './prisma/prisma.service';
 import { AIAction, DomainEvent } from '@motor100/shared';
 import { ConfigService } from '@nestjs/config';
@@ -38,10 +41,10 @@ describe('E2E Integration — happy path', () => {
     conversation: {
       findFirst: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({
-        id: 'conv-e2e', status: 'nova', ownerType: 'none', version: 1,
+        id: 'conv-e2e', status: 'nova', ownerType: 'none', version: 1, summaryMessageCount: 0,
       }),
       findUnique: jest.fn().mockResolvedValue({
-        id: 'conv-e2e', status: 'nova', ownerType: 'none', version: 1,
+        id: 'conv-e2e', status: 'nova', ownerType: 'none', version: 1, externalPhone: '+5511999990000', progressiveSummary: null, summaryMessageCount: 0,
       }),
       update: jest.fn().mockResolvedValue(mockConversation),
     },
@@ -68,7 +71,10 @@ describe('E2E Integration — happy path', () => {
         ConversationService,
         AiService,
         ChannelService,
+        GuardrailService,
         MessageProcessorService,
+        { provide: MemoryService, useValue: { retrieveRelevant: jest.fn().mockResolvedValue([]), storeMemory: jest.fn() } },
+        { provide: SummaryService, useValue: { generateProgressiveSummary: jest.fn().mockResolvedValue('summary') } },
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ConfigService, useValue: { get: jest.fn() } },
         { provide: getQueueToken('message-processing'), useValue: mockQueue },
@@ -173,9 +179,12 @@ describe('E2E Integration — happy path', () => {
     });
 
     mockPrisma.conversation.findFirst.mockResolvedValueOnce({
-      id: 'conv-e2e', status: 'atendida_ia', ownerType: 'ai', version: 2,
+      id: 'conv-e2e', status: 'atendida_ia', ownerType: 'ai', version: 2, summaryMessageCount: 0,
     });
     mockPrisma.conversation.findUnique
+      .mockResolvedValueOnce({
+        id: 'conv-e2e', status: 'atendida_ia', ownerType: 'ai', version: 2, externalPhone: '+5511999990000', progressiveSummary: null, summaryMessageCount: 0,
+      })
       .mockResolvedValueOnce({
         id: 'conv-e2e', status: 'atendida_ia', ownerType: 'ai', version: 2,
       });

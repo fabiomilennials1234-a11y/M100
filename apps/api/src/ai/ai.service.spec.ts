@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AiService } from './ai.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { MemoryService } from '../memory/memory.service';
 import { AIAction, DomainEvent } from '@motor100/shared';
 import axios from 'axios';
 
@@ -12,6 +13,7 @@ describe('AiService', () => {
   let service: AiService;
   let prisma: any;
   let events: EventEmitter2;
+  let mockMemory: any;
 
   beforeEach(async () => {
     process.env.OPENROUTER_API_KEY = 'test-key';
@@ -25,6 +27,18 @@ describe('AiService', () => {
           { direction: 'inbound', sender: 'customer', content: 'Qual o prazo de entrega?' },
         ]),
       },
+      conversation: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'conv-123',
+          externalPhone: '+5511999990000',
+          progressiveSummary: null,
+        }),
+      },
+    };
+
+    mockMemory = {
+      retrieveRelevant: jest.fn().mockResolvedValue([]),
+      storeMemory: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -32,12 +46,15 @@ describe('AiService', () => {
         AiService,
         { provide: PrismaService, useValue: prisma },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: MemoryService, useValue: mockMemory },
       ],
     }).compile();
 
     service = module.get(AiService);
     events = module.get(EventEmitter2);
   });
+
+  afterEach(() => jest.clearAllMocks());
 
   it('parses respond action from OpenRouter response', async () => {
     mockedAxios.post.mockResolvedValueOnce({
@@ -82,7 +99,7 @@ describe('AiService', () => {
     expect(decision.message).toBeUndefined();
   });
 
-  it('fetches last 20 messages for context', async () => {
+  it('fetches last 5 messages for context (reduced from 20)', async () => {
     mockedAxios.post.mockResolvedValueOnce({
       data: {
         choices: [{
@@ -95,8 +112,8 @@ describe('AiService', () => {
 
     expect(prisma.message.findMany).toHaveBeenCalledWith({
       where: { conversationId: 'conv-123' },
-      orderBy: { createdAt: 'asc' },
-      take: 20,
+      orderBy: { createdAt: 'desc' },
+      take: 5,
     });
   });
 
@@ -120,6 +137,95 @@ describe('AiService', () => {
 
     expect(decision.action).toBe(AIAction.HANDOFF);
     expect(decision.reason).toContain('parse');
+  });
+
+  describe('context assembly with memory', () => {
+    it('includes semantic memory in context when available', async () => {
+      mockMemory.retrieveRelevant.mockResolvedValueOnce([
+        { text: 'Cliente comprou produto X em janeiro', similarity: 0.92, createdAt: new Date() },
+        { text: 'Preferência por entrega expressa', similarity: 0.85, createdAt: new Date() },
+      ]);
+
+      prisma.conversation.findUnique.mockResolvedValueOnce({
+        id: 'conv-123',
+        externalPhone: '+5511999990000',
+        progressiveSummary: 'Cliente perguntou sobre prazo.',
+      });
+
+      mockedAxios.post.mockResolvedValueOnce({
+        data: {
+          choices: [{
+            message: { content: JSON.stringify({ action: 'respond', reason: 'ok', message: 'test' }) },
+          }],
+        },
+      });
+
+      await service.processMessage('conv-123');
+
+      const callArgs = mockedAxios.post.mock.calls[0][1] as any;
+      const messages = callArgs.messages;
+
+      expect(messages[0].role).toBe('system');
+      const memoryMsg = messages.find((m: any) => m.content?.includes('Memória semântica'));
+      expect(memoryMsg).toBeDefined();
+      expect(memoryMsg.content).toContain('Cliente comprou produto X');
+
+      const summaryMsg = messages.find((m: any) => m.content?.includes('Resumo da conversa'));
+      expect(summaryMsg).toBeDefined();
+      expect(summaryMsg.content).toContain('Cliente perguntou sobre prazo');
+    });
+
+    it('omits memory and summary sections when not available', async () => {
+      mockMemory.retrieveRelevant.mockResolvedValueOnce([]);
+
+      prisma.conversation.findUnique.mockResolvedValueOnce({
+        id: 'conv-123',
+        externalPhone: '+5511999990000',
+        progressiveSummary: null,
+      });
+
+      mockedAxios.post.mockResolvedValueOnce({
+        data: {
+          choices: [{
+            message: { content: JSON.stringify({ action: 'respond', reason: 'ok', message: 'test' }) },
+          }],
+        },
+      });
+
+      await service.processMessage('conv-123');
+
+      const callArgs = mockedAxios.post.mock.calls[0][1] as any;
+      const messages = callArgs.messages;
+
+      const memoryMsg = messages.find((m: any) => m.content?.includes('Memória semântica'));
+      expect(memoryMsg).toBeUndefined();
+
+      const summaryMsg = messages.find((m: any) => m.content?.includes('Resumo da conversa'));
+      expect(summaryMsg).toBeUndefined();
+    });
+
+    it('requests only last 5 messages from database', async () => {
+      mockMemory.retrieveRelevant.mockResolvedValueOnce([]);
+      prisma.conversation.findUnique.mockResolvedValueOnce({
+        id: 'conv-123',
+        externalPhone: '+5511999990000',
+        progressiveSummary: null,
+      });
+
+      mockedAxios.post.mockResolvedValueOnce({
+        data: {
+          choices: [{
+            message: { content: JSON.stringify({ action: 'respond', reason: 'ok', message: 'test' }) },
+          }],
+        },
+      });
+
+      await service.processMessage('conv-123');
+
+      expect(prisma.message.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 5 }),
+      );
+    });
   });
 
   it('calls OpenRouter with correct model and system prompt', async () => {

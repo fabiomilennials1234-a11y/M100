@@ -26,8 +26,11 @@
     "bullmq": "^5.0.0",
     "ioredis": "^5.10.1",
     "langfuse": "^3.38.20",
+    "mammoth": "^1.12.0",
+    "pdf-parse": "^2.4.5",
     "reflect-metadata": "^0.2.0",
-    "rxjs": "^7.8.0"
+    "rxjs": "^7.8.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",

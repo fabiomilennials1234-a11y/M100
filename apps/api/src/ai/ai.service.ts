@@ -1,8 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Inject, Logger, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AIDecision, AIAction, AIProvider, DomainEvent } from '@motor100/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { MemoryService } from '../memory/memory.service';
 import axios from 'axios';
 
 const SYSTEM_PROMPT = `Você é um assistente de atendimento ao cliente. Responda de forma educada, objetiva e útil.
@@ -26,13 +27,16 @@ export class AiService implements AIProvider {
   private readonly logger = new Logger(AiService.name);
   private readonly apiKey: string;
   private readonly model: string;
+  private readonly contextWindowSize: number;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventEmitter2,
+    @Inject(MemoryService) @Optional() private readonly memory?: MemoryService,
   ) {
     this.apiKey = process.env.OPENROUTER_API_KEY ?? '';
     this.model = process.env.OPENROUTER_MODEL ?? 'anthropic/claude-sonnet-4-20250514';
+    this.contextWindowSize = parseInt(process.env.AI_CONTEXT_MESSAGES ?? '5', 10);
   }
 
   async generateResponse(
@@ -69,18 +73,51 @@ export class AiService implements AIProvider {
   }
 
   async processMessage(conversationId: string): Promise<AIDecision> {
-    const dbMessages = await this.prisma.message.findMany({
-      where: { conversationId },
-      orderBy: { createdAt: 'asc' },
-      take: 20,
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
     });
 
-    const messages = dbMessages.map((m: any) => ({
+    const dbMessages = await this.prisma.message.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: 'desc' },
+      take: this.contextWindowSize,
+    });
+
+    const recentMessages = dbMessages.reverse().map((m: any) => ({
       role: m.sender === 'customer' ? 'user' : 'assistant',
       content: m.content,
     }));
 
-    return this.generateResponse(conversationId, messages);
+    const contextMessages: Array<{ role: string; content: string }> = [];
+
+    if (this.memory && conversation) {
+      const lastUserMsg = recentMessages.filter(m => m.role === 'user').pop();
+      if (lastUserMsg) {
+        const memories = await this.memory.retrieveRelevant(
+          conversation.externalPhone,
+          lastUserMsg.content,
+        );
+
+        if (memories.length > 0) {
+          const memoryText = memories.map(m => `- ${m.text}`).join('\n');
+          contextMessages.push({
+            role: 'system',
+            content: `Memória semântica (interações anteriores relevantes):\n${memoryText}`,
+          });
+        }
+      }
+    }
+
+    if (conversation?.progressiveSummary) {
+      contextMessages.push({
+        role: 'system',
+        content: `Resumo da conversa atual:\n${conversation.progressiveSummary}`,
+      });
+    }
+
+    contextMessages.push(...recentMessages);
+
+    return this.generateResponse(conversationId, contextMessages);
   }
 
   @OnEvent(DomainEvent.MESSAGE_RECEIVED)

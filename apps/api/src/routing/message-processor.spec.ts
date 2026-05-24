@@ -4,6 +4,8 @@ import { MessageProcessorService } from './message-processor.service';
 import { ConversationService } from '../conversation/conversation.service';
 import { AiService } from '../ai/ai.service';
 import { ChannelService } from '../channel/channel.service';
+import { GuardrailService } from '../guardrail/guardrail.service';
+import { SummaryService } from '../summary/summary.service';
 import { AIAction, DomainEvent } from '@motor100/shared';
 import { getQueueToken } from '@nestjs/bullmq';
 import { TRACING_PROVIDER } from '../tracing/tracing.constants';
@@ -14,13 +16,15 @@ describe('MessageProcessorService', () => {
   let conversationService: any;
   let aiService: any;
   let channelService: any;
+  let guardrailService: any;
+  let summaryService: any;
   let events: any;
   let mockQueue: any;
 
   beforeEach(async () => {
     conversationService = {
       handleInboundMessage: jest.fn().mockResolvedValue({
-        conversation: { id: 'conv-1', ownerType: 'ai', status: 'atendida_ia' },
+        conversation: { id: 'conv-1', ownerType: 'ai', status: 'atendida_ia', summaryMessageCount: 5 },
         message: { id: 'msg-1' },
       }),
       requestHandoff: jest.fn(),
@@ -38,6 +42,23 @@ describe('MessageProcessorService', () => {
       send: jest.fn().mockResolvedValue({ externalId: 'ext-1' }),
     };
 
+    guardrailService = {
+      sanitizeInput: jest.fn().mockReturnValue({
+        sanitized: 'clean text',
+        piiRedacted: false,
+        injectionFlagged: false,
+        flags: [],
+      }),
+      validateOutput: jest.fn().mockReturnValue({
+        valid: true,
+        action: 'pass',
+      }),
+    };
+
+    summaryService = {
+      generateProgressiveSummary: jest.fn().mockResolvedValue('summary'),
+    };
+
     mockQueue = {
       add: jest.fn().mockResolvedValue({ id: 'job-1' }),
     };
@@ -48,6 +69,8 @@ describe('MessageProcessorService', () => {
         { provide: ConversationService, useValue: conversationService },
         { provide: AiService, useValue: aiService },
         { provide: ChannelService, useValue: channelService },
+        { provide: GuardrailService, useValue: guardrailService },
+        { provide: SummaryService, useValue: summaryService },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: getQueueToken('message-processing'), useValue: mockQueue },
         { provide: TRACING_PROVIDER, useValue: new NoopTracingProvider() },
@@ -57,6 +80,8 @@ describe('MessageProcessorService', () => {
     service = module.get(MessageProcessorService);
     events = module.get(EventEmitter2);
   });
+
+  afterEach(() => jest.clearAllMocks());
 
   it('enqueues job on debounce.flushed event', async () => {
     await service.handleDebounceFlushed({ phone: '+5511999990000', content: 'Oi' });
@@ -79,7 +104,7 @@ describe('MessageProcessorService', () => {
     await service.processJob(job as any);
 
     expect(conversationService.handleInboundMessage).toHaveBeenCalledWith(
-      '+5511999990000', 'Qual prazo?', 'text',
+      '+5511999990000', 'clean text', 'text',
     );
     expect(aiService.processMessage).toHaveBeenCalledWith('conv-1');
     expect(channelService.send).toHaveBeenCalledWith({
@@ -115,5 +140,76 @@ describe('MessageProcessorService', () => {
         name: 'message-processing',
       }),
     );
+  });
+
+  describe('pipeline integration (Fase 3)', () => {
+    it('runs input guardrail before AI call', async () => {
+      const job = { data: { phone: '+5511999990000', content: 'Meu CPF é 123.456.789-00' } };
+      await service.processJob(job as any);
+
+      expect(guardrailService.sanitizeInput).toHaveBeenCalledWith('Meu CPF é 123.456.789-00');
+      const sanitizeOrder = guardrailService.sanitizeInput.mock.invocationCallOrder[0];
+      const aiOrder = aiService.processMessage.mock.invocationCallOrder[0];
+      expect(sanitizeOrder).toBeLessThan(aiOrder);
+    });
+
+    it('runs output guardrail after AI response', async () => {
+      const job = { data: { phone: '+5511999990000', content: 'Oi' } };
+      await service.processJob(job as any);
+
+      expect(guardrailService.validateOutput).toHaveBeenCalledWith('Prazo é 3-5 dias.');
+      const aiOrder = aiService.processMessage.mock.invocationCallOrder[0];
+      const validateOrder = guardrailService.validateOutput.mock.invocationCallOrder[0];
+      expect(aiOrder).toBeLessThan(validateOrder);
+    });
+
+    it('triggers auto-handoff when output guardrail fails', async () => {
+      guardrailService.validateOutput.mockReturnValue({
+        valid: false,
+        action: 'handoff',
+        reason: 'pii_leakage_detected',
+      });
+
+      const job = { data: { phone: '+5511999990000', content: 'Oi' } };
+      await service.processJob(job as any);
+
+      expect(conversationService.requestHandoff).toHaveBeenCalledWith('conv-1');
+      expect(channelService.send).not.toHaveBeenCalled();
+    });
+
+    it('passes sanitized content to conversation service', async () => {
+      guardrailService.sanitizeInput.mockReturnValue({
+        sanitized: 'Meu CPF é [CPF_REDACTED]',
+        piiRedacted: true,
+        injectionFlagged: false,
+        flags: ['cpf_redacted'],
+      });
+
+      const job = { data: { phone: '+5511999990000', content: 'Meu CPF é 123.456.789-00' } };
+      await service.processJob(job as any);
+
+      expect(conversationService.handleInboundMessage).toHaveBeenCalledWith(
+        '+5511999990000', 'Meu CPF é [CPF_REDACTED]', 'text',
+      );
+    });
+
+    it('triggers progressive summary every 10 messages', async () => {
+      conversationService.handleInboundMessage.mockResolvedValue({
+        conversation: { id: 'conv-1', ownerType: 'ai', status: 'atendida_ia', summaryMessageCount: 9 },
+        message: { id: 'msg-10' },
+      });
+
+      const job = { data: { phone: '+5511999990000', content: 'Oi' } };
+      await service.processJob(job as any);
+
+      expect(summaryService.generateProgressiveSummary).toHaveBeenCalledWith('conv-1');
+    });
+
+    it('skips progressive summary when not at threshold', async () => {
+      const job = { data: { phone: '+5511999990000', content: 'Oi' } };
+      await service.processJob(job as any);
+
+      expect(summaryService.generateProgressiveSummary).not.toHaveBeenCalled();
+    });
   });
 });
