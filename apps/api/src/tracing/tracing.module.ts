@@ -1,8 +1,9 @@
 import { Global, Module } from '@nestjs/common';
 import { NoopTracingProvider } from './noop-tracing.provider';
 import { LangfuseTracingProvider } from './langfuse-tracing.provider';
+import { TRACING_PROVIDER } from './tracing.constants';
 
-export const TRACING_PROVIDER = 'TRACING_PROVIDER';
+export { TRACING_PROVIDER };
 
 @Global()
 @Module({

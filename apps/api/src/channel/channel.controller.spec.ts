@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ChannelController } from './channel.controller';
 import { ConversationService } from '../conversation/conversation.service';
 import { DebounceService } from './debounce.service';
+import { RateLimitGuard, REDIS_CLIENT } from './rate-limit.guard';
 import { UnauthorizedException, BadRequestException } from '@nestjs/common';
 
 describe('ChannelController', () => {
@@ -28,6 +29,11 @@ describe('ChannelController', () => {
         {
           provide: DebounceService,
           useValue: { debounce: jest.fn() },
+        },
+        RateLimitGuard,
+        {
+          provide: REDIS_CLIENT,
+          useValue: { incr: jest.fn().mockResolvedValue(1), ttl: jest.fn().mockResolvedValue(-1), expire: jest.fn() },
         },
       ],
     }).compile();

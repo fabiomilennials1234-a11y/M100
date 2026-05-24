@@ -6,6 +6,8 @@ import { AiService } from '../ai/ai.service';
 import { ChannelService } from '../channel/channel.service';
 import { AIAction, DomainEvent } from '@motor100/shared';
 import { getQueueToken } from '@nestjs/bullmq';
+import { TRACING_PROVIDER } from '../tracing/tracing.constants';
+import { NoopTracingProvider } from '../tracing/noop-tracing.provider';
 
 describe('MessageProcessorService', () => {
   let service: MessageProcessorService;
@@ -48,6 +50,7 @@ describe('MessageProcessorService', () => {
         { provide: ChannelService, useValue: channelService },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: getQueueToken('message-processing'), useValue: mockQueue },
+        { provide: TRACING_PROVIDER, useValue: new NoopTracingProvider() },
       ],
     }).compile();
 

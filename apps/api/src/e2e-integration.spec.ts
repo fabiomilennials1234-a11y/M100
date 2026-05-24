@@ -11,6 +11,10 @@ import { PrismaService } from './prisma/prisma.service';
 import { AIAction, DomainEvent } from '@motor100/shared';
 import { ConfigService } from '@nestjs/config';
 import { getQueueToken } from '@nestjs/bullmq';
+import { TRACING_PROVIDER } from './tracing/tracing.constants';
+import { NoopTracingProvider } from './tracing/noop-tracing.provider';
+import { REDIS_CLIENT } from './channel/rate-limit.guard';
+import { RateLimitGuard } from './channel/rate-limit.guard';
 import axios from 'axios';
 
 jest.mock('axios');
@@ -68,6 +72,9 @@ describe('E2E Integration — happy path', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ConfigService, useValue: { get: jest.fn() } },
         { provide: getQueueToken('message-processing'), useValue: mockQueue },
+        { provide: TRACING_PROVIDER, useValue: new NoopTracingProvider() },
+        { provide: REDIS_CLIENT, useValue: { incr: jest.fn().mockResolvedValue(1), ttl: jest.fn().mockResolvedValue(-1), expire: jest.fn() } },
+        RateLimitGuard,
       ],
     }).compile();
 

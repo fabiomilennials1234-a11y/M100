@@ -4,13 +4,17 @@ import {
   ExecutionContext,
   HttpException,
   HttpStatus,
+  Inject,
 } from '@nestjs/common';
+import Redis from 'ioredis';
+
+export const REDIS_CLIENT = 'REDIS_CLIENT';
 
 @Injectable()
 export class RateLimitGuard implements CanActivate {
   private readonly limit: number;
 
-  constructor(private readonly redis: any) {
+  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {
     this.limit = parseInt(process.env.RATE_LIMIT_PER_MINUTE ?? '30', 10);
   }
 

@@ -1,18 +1,26 @@
-import { RateLimitGuard } from './rate-limit.guard';
+import { Test } from '@nestjs/testing';
+import { RateLimitGuard, REDIS_CLIENT } from './rate-limit.guard';
 import { ExecutionContext, HttpException } from '@nestjs/common';
 
 describe('RateLimitGuard', () => {
   let guard: RateLimitGuard;
   let mockRedis: any;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mockRedis = {
       incr: jest.fn().mockResolvedValue(1),
       expire: jest.fn().mockResolvedValue(1),
       ttl: jest.fn().mockResolvedValue(-1),
     };
 
-    guard = new RateLimitGuard(mockRedis);
+    const module = await Test.createTestingModule({
+      providers: [
+        RateLimitGuard,
+        { provide: REDIS_CLIENT, useValue: mockRedis },
+      ],
+    }).compile();
+
+    guard = module.get(RateLimitGuard);
   });
 
   function createContext(phone: string): ExecutionContext {

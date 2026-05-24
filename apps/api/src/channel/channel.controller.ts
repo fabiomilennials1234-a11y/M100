@@ -6,8 +6,10 @@ import {
   Logger,
   UnauthorizedException,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import { DebounceService } from './debounce.service';
+import { RateLimitGuard } from './rate-limit.guard';
 
 @Controller('webhook')
 export class ChannelController {
@@ -16,6 +18,7 @@ export class ChannelController {
   constructor(private readonly debounceService: DebounceService) {}
 
   @Post('uazapi')
+  @UseGuards(RateLimitGuard)
   async handleUazapiWebhook(
     @Body() body: any,
     @Headers('x-webhook-secret') secret?: string,
