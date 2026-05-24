@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { BullModule } from '@nestjs/bullmq';
 import { PrismaModule } from './prisma/prisma.module';
+import { TracingModule } from './tracing/tracing.module';
 import { ConversationModule } from './conversation/conversation.module';
 import { RoutingModule } from './routing/routing.module';
 import { AiModule } from './ai/ai.module';
@@ -11,6 +13,7 @@ import { AgentModule } from './agent/agent.module';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
     EventEmitterModule.forRoot(),
     BullModule.forRoot({
       connection: {
@@ -19,6 +22,7 @@ import { AgentModule } from './agent/agent.module';
       },
     }),
     PrismaModule,
+    TracingModule,
     ConversationModule,
     RoutingModule,
     AiModule,

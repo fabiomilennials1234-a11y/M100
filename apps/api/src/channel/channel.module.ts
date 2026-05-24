@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { ChannelService } from './channel.service';
 import { ChannelController } from './channel.controller';
-import { ConversationModule } from '../conversation/conversation.module';
+import { DebounceService } from './debounce.service';
 
 @Module({
-  imports: [ConversationModule],
+  imports: [ConfigModule],
   controllers: [ChannelController],
-  providers: [ChannelService],
-  exports: [ChannelService],
+  providers: [ChannelService, DebounceService],
+  exports: [ChannelService, DebounceService],
 })
 export class ChannelModule {}

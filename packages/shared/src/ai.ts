@@ -8,3 +8,7 @@ export interface AIDecision {
   reason: string;
   message?: string;
 }
+
+export interface AIProvider {
+  generateResponse(conversationId: string, messages: Array<{ role: string; content: string }>): Promise<AIDecision>;
+}

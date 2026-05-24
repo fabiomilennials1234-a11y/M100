@@ -66,7 +66,9 @@ export class ConversationService {
     const data: Prisma.ConversationUpdateInput = {
       status: targetStatus,
       ownerType: ownerType,
-      agentId: ownerType === OwnerType.AGENT ? agentId : null,
+      agent: ownerType === OwnerType.AGENT && agentId
+        ? { connect: { id: agentId } }
+        : { disconnect: true },
       version: { increment: 1 },
       closedAt: targetStatus === ConversationStatus.ENCERRADA ? new Date() : null,
     };

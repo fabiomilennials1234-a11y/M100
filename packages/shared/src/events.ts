@@ -10,4 +10,5 @@ export enum DomainEvent {
   HANDOFF_COMPLETED = 'handoff.completed',
   AGENT_ASSIGNED = 'agent.assigned',
   AI_RESPONSE_GENERATED = 'ai.response_generated',
+  DEBOUNCE_FLUSHED = 'debounce.flushed',
 }

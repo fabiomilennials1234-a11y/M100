@@ -5,3 +5,4 @@ export * from './ai';
 export * from './events';
 export * from './channel';
 export * from './integration';
+export * from './tracing';
