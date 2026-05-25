@@ -1,12 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { MessageProcessorService } from './message-processor.service';
-import { ConversationService } from '../conversation/conversation.service';
-import { AiService } from '../ai/ai.service';
-import { ChannelService } from '../channel/channel.service';
-import { GuardrailService } from '../guardrail/guardrail.service';
-import { SummaryService } from '../summary/summary.service';
-import { AIAction, DomainEvent, ROUTING_PORT } from '@motor100/shared';
+import {
+  AIAction, DomainEvent, ROUTING_PORT,
+  CONVERSATION_PORT, AI_PORT, CHANNEL_PORT, GUARDRAIL_PORT, SUMMARY_PORT,
+} from '@motor100/shared';
 import { getQueueToken } from '@nestjs/bullmq';
 import { TRACING_PROVIDER } from '../tracing/tracing.constants';
 import { NoopTracingProvider } from '../tracing/noop-tracing.provider';
@@ -71,11 +69,11 @@ describe('MessageProcessorService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MessageProcessorService,
-        { provide: ConversationService, useValue: conversationService },
-        { provide: AiService, useValue: aiService },
-        { provide: ChannelService, useValue: channelService },
-        { provide: GuardrailService, useValue: guardrailService },
-        { provide: SummaryService, useValue: summaryService },
+        { provide: CONVERSATION_PORT, useValue: conversationService },
+        { provide: AI_PORT, useValue: aiService },
+        { provide: CHANNEL_PORT, useValue: channelService },
+        { provide: GUARDRAIL_PORT, useValue: guardrailService },
+        { provide: SUMMARY_PORT, useValue: summaryService },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: getQueueToken('message-processing'), useValue: mockQueue },
         { provide: TRACING_PROVIDER, useValue: new NoopTracingProvider() },

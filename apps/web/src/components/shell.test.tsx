@@ -48,7 +48,7 @@ describe('Shell', () => {
     expect(screen.getByText('Dashboard')).toBeInTheDocument();
     expect(screen.getByText('Fila')).toBeInTheDocument();
     expect(screen.getByText('Conversas')).toBeInTheDocument();
-    expect(screen.getByText('Motor100')).toBeInTheDocument();
+    expect(screen.getAllByText('Motor100').length).toBeGreaterThan(0);
   });
 
   it('highlights active link', () => {

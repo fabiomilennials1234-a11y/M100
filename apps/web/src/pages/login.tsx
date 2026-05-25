@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/use-auth';
+import { Card, CardHeader, CardContent, CardFooter } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 
 export function LoginPage() {
   const { agent, signIn, loading } = useAuth();
@@ -34,65 +38,62 @@ export function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="w-full max-w-sm rounded-lg border border-border bg-card p-8">
-        <div className="mb-8 text-center">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="text-center">
           <h1 className="text-2xl font-bold text-foreground">Motor100</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Agent Workspace</p>
-        </div>
+          <p className="text-sm text-muted-foreground">Agent Workspace</p>
+        </CardHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label
-              htmlFor="email"
-              className="mb-1.5 block text-sm font-medium text-foreground"
-            >
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="password"
-              className="mb-1.5 block text-sm font-medium text-foreground"
-            >
-              Senha
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
-
-          {error && (
-            <div
-              role="alert"
-              className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
-            >
-              {error}
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
             </div>
-          )}
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full cursor-pointer rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors duration-150 hover:bg-primary/90 disabled:opacity-50"
-          >
-            {submitting ? 'Entrando...' : 'Entrar'}
-          </button>
-        </form>
-      </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="password">Senha</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+
+            {error && (
+              <div
+                role="alert"
+                className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              >
+                {error}
+              </div>
+            )}
+
+            <Button
+              type="submit"
+              disabled={submitting}
+              className="w-full"
+              size="lg"
+            >
+              {submitting ? 'Entrando...' : 'Entrar'}
+            </Button>
+          </form>
+        </CardContent>
+
+        <CardFooter className="justify-center">
+          <p className="text-xs text-muted-foreground">
+            Motor100 &copy; {new Date().getFullYear()}
+          </p>
+        </CardFooter>
+      </Card>
     </div>
   );
 }

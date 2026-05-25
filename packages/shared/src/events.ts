@@ -11,4 +11,5 @@ export enum DomainEvent {
   AGENT_ASSIGNED = 'agent.assigned',
   AI_RESPONSE_GENERATED = 'ai.response_generated',
   DEBOUNCE_FLUSHED = 'debounce.flushed',
+  HITL_APPROVAL_REQUESTED = 'hitl.approval_requested',
 }

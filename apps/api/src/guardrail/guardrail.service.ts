@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   GuardrailPort,
   SanitizationResult,
@@ -6,10 +7,35 @@ import {
   ToolInterceptionResult,
   ApprovalContext,
   ApprovalResult,
+  DomainEvent,
 } from '@motor100/shared';
 
 @Injectable()
 export class GuardrailService implements GuardrailPort {
+  private readonly logger = new Logger(GuardrailService.name);
+
+  private static readonly TOOL_BLOCKLIST = new Set([
+    'delete_account',
+    'delete_data',
+    'transfer_money',
+    'modify_permissions',
+    'access_admin',
+    'execute_sql',
+    'drop_table',
+  ]);
+
+  private static readonly TOOL_ALLOWLIST = new Set([
+    'search_faq',
+    'check_order_status',
+    'get_product_info',
+    'check_delivery',
+    'get_business_hours',
+  ]);
+
+  private static readonly HITL_TIMEOUT_MS = 30_000;
+
+  constructor(private readonly events: EventEmitter2) {}
+
   private readonly PII_PATTERNS: Array<{ regex: RegExp; token: string; flag: string }> = [
     { regex: /\d{3}\.\d{3}\.\d{3}-\d{2}/g, token: '[CPF_REDACTED]', flag: 'cpf_redacted' },
     { regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, token: '[EMAIL_REDACTED]', flag: 'email_redacted' },
@@ -88,11 +114,34 @@ export class GuardrailService implements GuardrailPort {
     return { valid: true, action: 'pass' };
   }
 
-  interceptToolCall(_toolName: string, _args: Record<string, unknown>): ToolInterceptionResult {
-    return { allowed: true };
+  interceptToolCall(toolName: string, _args: Record<string, unknown>): ToolInterceptionResult {
+    if (GuardrailService.TOOL_BLOCKLIST.has(toolName)) {
+      return { allowed: false, reason: `tool_blocked: ${toolName}` };
+    }
+
+    if (GuardrailService.TOOL_ALLOWLIST.has(toolName)) {
+      return { allowed: true };
+    }
+
+    return { allowed: false, reason: 'unknown_tool' };
   }
 
-  async requestHumanApproval(_context: ApprovalContext): Promise<ApprovalResult> {
-    return { approved: true };
+  async requestHumanApproval(context: ApprovalContext): Promise<ApprovalResult> {
+    this.events.emit(DomainEvent.HITL_APPROVAL_REQUESTED, context);
+    this.logger.log(`HITL approval requested: ${context.action} [${context.conversationId}]`);
+
+    return new Promise<ApprovalResult>((resolve) => {
+      const timer = setTimeout(() => {
+        resolve({ approved: false, reason: 'approval_timeout' });
+      }, GuardrailService.HITL_TIMEOUT_MS);
+
+      // If external approval arrives via event, clear timeout and resolve
+      const handler = (result: ApprovalResult) => {
+        clearTimeout(timer);
+        resolve(result);
+      };
+
+      this.events.once(`hitl.approval_response.${context.conversationId}`, handler);
+    });
   }
 }

@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { NoopTracingProvider } from './noop-tracing.provider';
 import { LangfuseTracingProvider } from './langfuse-tracing.provider';
 import { TRACING_PROVIDER } from './tracing.constants';
+import { EventListenerService } from './event-listener.service';
 
 export { TRACING_PROVIDER };
 
@@ -25,6 +26,7 @@ export { TRACING_PROVIDER };
         return new NoopTracingProvider();
       },
     },
+    EventListenerService,
   ],
   exports: [TRACING_PROVIDER],
 })

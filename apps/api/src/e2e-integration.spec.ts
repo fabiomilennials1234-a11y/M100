@@ -11,7 +11,10 @@ import { GuardrailService } from './guardrail/guardrail.service';
 import { SummaryService } from './summary/summary.service';
 import { MemoryService } from './memory/memory.service';
 import { PrismaService } from './prisma/prisma.service';
-import { AIAction, DomainEvent, ROUTING_PORT } from '@motor100/shared';
+import {
+  AIAction, DomainEvent, ROUTING_PORT,
+  CONVERSATION_PORT, AI_PORT, CHANNEL_PORT, GUARDRAIL_PORT, SUMMARY_PORT,
+} from '@motor100/shared';
 import { ConfigService } from '@nestjs/config';
 import { getQueueToken } from '@nestjs/bullmq';
 import { TRACING_PROVIDER } from './tracing/tracing.constants';
@@ -81,6 +84,11 @@ describe('E2E Integration — happy path', () => {
         { provide: TRACING_PROVIDER, useValue: new NoopTracingProvider() },
         { provide: REDIS_CLIENT, useValue: { incr: jest.fn().mockResolvedValue(1), ttl: jest.fn().mockResolvedValue(-1), expire: jest.fn() } },
         { provide: ROUTING_PORT, useValue: { assignBestAgent: jest.fn().mockResolvedValue({ assigned: false, reason: 'no_agent_available' }) } },
+        { provide: CONVERSATION_PORT, useExisting: ConversationService },
+        { provide: AI_PORT, useExisting: AiService },
+        { provide: CHANNEL_PORT, useExisting: ChannelService },
+        { provide: GUARDRAIL_PORT, useExisting: GuardrailService },
+        { provide: SUMMARY_PORT, useExisting: SummaryService },
         RateLimitGuard,
       ],
     }).compile();
