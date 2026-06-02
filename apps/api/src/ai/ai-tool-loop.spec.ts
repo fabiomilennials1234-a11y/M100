@@ -256,6 +256,21 @@ describe('AiService — ERP tool-calling loop', () => {
     expect(mockedAxios.post).toHaveBeenCalledTimes(2); // below the 3-round cap
   });
 
+  it('degrades gracefully when a tool dispatch throws (e.g. ERP circuit open)', async () => {
+    const { service, registry } = await buildService();
+    (registry.dispatch as jest.Mock).mockRejectedValue(new Error('circuit_open'));
+    mockedAxios.post
+      .mockResolvedValueOnce(toolCallMessage({ query: 'x' }))
+      .mockResolvedValueOnce(respondMessage('Não consegui consultar agora, vou te transferir.'));
+
+    const decision = await service.processMessage('conv-1');
+
+    const secondCallMessages = (mockedAxios.post.mock.calls[1][1] as any).messages;
+    const toolMsg = secondCallMessages.find((m: any) => m.role === 'tool');
+    expect(toolMsg.content).toContain('tool_failed');
+    expect(decision.action).toBe(AIAction.RESPOND);
+  });
+
   it('does not echo the blocked tool name back to the model (anti-enumeration)', async () => {
     const guardrail = {
       interceptToolCall: jest.fn().mockReturnValue({ allowed: false, reason: 'tool_blocked: get_product_info' }),

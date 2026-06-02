@@ -10,12 +10,22 @@ import {
 } from '@motor100/shared';
 import axios from 'axios';
 import { FlexAuthSession } from './flex-auth-session';
+import { CircuitBreaker } from './circuit-breaker';
+
+/** ERP is on-premise without SLA: bound each call and stop hammering when down. */
+const REQUEST_TIMEOUT_MS = 4000;
+const BREAKER_THRESHOLD = 5;
+const BREAKER_COOLDOWN_MS = 30_000;
 
 /**
  * HTTP adapter over the Flex Smart ERP REST API. ALL Flex idiosyncrasies live
  * here and nowhere else: exact (case-sensitive) endpoint paths and params,
  * per-endpoint date formats, the 2-hop product search (Detalhada → getByIds),
  * and the rule that getAll is never used on the hot path.
+ *
+ * The circuit breaker is a SINGLE shared instance: a failure in any method
+ * (search, stock, price, …) counts toward tripping it, so when the on-premise
+ * ERP is down the whole adapter fails fast — intentional.
  *
  * ⚠️ VERIFY before go-live (#51): the auth header is sent as `authToken`
  * (per the doc body text), but the doc is inconsistent (`AuthToken` elsewhere)
@@ -25,6 +35,10 @@ import { FlexAuthSession } from './flex-auth-session';
 export class FlexErpAdapter implements ErpQueryPort {
   private readonly logger = new Logger(FlexErpAdapter.name);
   private readonly baseUrl: string;
+  private readonly breaker = new CircuitBreaker({
+    threshold: BREAKER_THRESHOLD,
+    cooldownMs: BREAKER_COOLDOWN_MS,
+  });
 
   constructor(
     private readonly config: ConfigService,
@@ -181,24 +195,30 @@ export class FlexErpAdapter implements ErpQueryPort {
   }
 
   /**
-   * GET with the Flex auth header. On a 401, invalidates the session and
-   * retries once with a fresh token (handles server-side token expiry).
+   * GET with the Flex auth header. Each underlying HTTP attempt goes through the
+   * circuit breaker, so a 401 (and any transient failure) counts toward tripping
+   * it — intermittent auth instability is not masked by the retry. On a 401 we
+   * invalidate the session and retry ONCE with a fresh token, as a separate
+   * breaker call (a recovered single 401 then resets the breaker, but repeated
+   * 401s accumulate). CircuitOpenError fails fast without touching the ERP.
    */
   private async authedGet(url: string): Promise<unknown> {
     try {
-      const { data } = await axios.get(url, {
-        headers: { authToken: await this.auth.getToken() },
-      });
-      return data;
+      return await this.breaker.exec(() => this.rawGet(url));
     } catch (error: any) {
       if (error?.response?.status === 401) {
         this.auth.invalidate();
-        const { data } = await axios.get(url, {
-          headers: { authToken: await this.auth.getToken() },
-        });
-        return data;
+        return this.breaker.exec(() => this.rawGet(url));
       }
       throw error;
     }
+  }
+
+  private async rawGet(url: string): Promise<unknown> {
+    const { data } = await axios.get(url, {
+      headers: { authToken: await this.auth.getToken() },
+      timeout: REQUEST_TIMEOUT_MS,
+    });
+    return data;
   }
 }
