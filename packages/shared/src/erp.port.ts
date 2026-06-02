@@ -15,6 +15,23 @@ export interface ProductSummary {
   unidadeVenda: string;
 }
 
+/** Stock availability for an item in a Filial. */
+export interface StockInfo {
+  idItem: number;
+  disponivel: boolean;
+  quantidade: number;
+}
+
+/** Narrow customer view used for identity resolution — not the raw Flex client. */
+export interface CustomerSummary {
+  cdCliente: number;
+  nome: string;
+  /** Phones on the Flex cadastro (fone, fone2/celular), for phone-match verification. */
+  telefones: string[];
+  /** Vendedor vinculado, if any — influences human routing. */
+  vendedorId: number | null;
+}
+
 export interface ErpQueryPort {
   /**
    * Free-text product search within a Filial. Resolves to a list of products.
@@ -22,4 +39,13 @@ export interface ErpQueryPort {
    * @param cdFilial the Filial to search within (derived from the Channel Instance)
    */
   searchProducts(query: string, cdFilial: number): Promise<ProductSummary[]>;
+
+  /**
+   * Looks up a customer by CPF/CNPJ. Returns null when no cadastro exists.
+   * Used to bind a WhatsApp phone to a Cliente Flex (with phone-match check).
+   */
+  getCustomerByDocument(cpfCnpj: string): Promise<CustomerSummary | null>;
+
+  /** Stock availability of an item within a Filial. */
+  getStock(idItem: number, cdFilial: number): Promise<StockInfo>;
 }

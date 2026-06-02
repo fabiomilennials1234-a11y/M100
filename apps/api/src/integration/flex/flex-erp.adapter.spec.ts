@@ -131,3 +131,99 @@ describe('FlexErpAdapter.searchProducts', () => {
     expect(mockedAxios.get).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('FlexErpAdapter.getCustomerByDocument', () => {
+  afterEach(() => jest.clearAllMocks());
+
+  it('looks up a customer by CPF/CNPJ and maps a narrow DTO with cadastro phones', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({
+      data: {
+        cdCliente: 8401,
+        nmCliente: 'Fulano de Tal',
+        fone: '49 3333-0000',
+        fone2: '49 9 9999-1234',
+        cdVendedor: 109,
+      },
+    });
+
+    const customer = await adapter.getCustomerByDocument('07100189918');
+
+    const [url, cfg] = mockedAxios.get.mock.calls[0];
+    expect(url).toContain('/Cliente/getByCpfCnpj');
+    expect(url).toContain('cpfCnpj=07100189918');
+    expect(cfg).toEqual({ headers: { authToken: 'TK' } });
+    expect(customer).toEqual({
+      cdCliente: 8401,
+      nome: 'Fulano de Tal',
+      telefones: ['49 3333-0000', '49 9 9999-1234'],
+      vendedorId: 109,
+    });
+  });
+
+  it('returns null when there is no cadastro for the document', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({ data: '' });
+
+    expect(await adapter.getCustomerByDocument('00000000000')).toBeNull();
+  });
+
+  it('maps a missing vendedor to null', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({
+      data: { cdCliente: 1, nmCliente: 'Sem Vendedor', fone: '49 3000-0000' },
+    });
+
+    const customer = await adapter.getCustomerByDocument('11111111111');
+    expect(customer?.vendedorId).toBeNull();
+    expect(customer?.telefones).toEqual(['49 3000-0000']);
+  });
+});
+
+describe('FlexErpAdapter.getStock', () => {
+  afterEach(() => jest.clearAllMocks());
+
+  it('queries WmsEstoque with the item param (not idItem) and the Filial', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({ data: { qtDisponivel: 5, qtAtual: 7 } });
+
+    const stock = await adapter.getStock(106, 2);
+
+    const [url, cfg] = mockedAxios.get.mock.calls[0];
+    expect(url).toContain('/WmsEstoque/consultar');
+    expect(url).toContain('item=106');
+    expect(url).toContain('cdFilial=2');
+    expect(cfg).toEqual({ headers: { authToken: 'TK' } });
+    expect(stock).toEqual({ idItem: 106, disponivel: true, quantidade: 5 });
+  });
+
+  it('reports unavailable when quantity is zero', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({ data: { qtDisponivel: 0 } });
+
+    const stock = await adapter.getStock(106, 1);
+    expect(stock).toEqual({ idItem: 106, disponivel: false, quantidade: 0 });
+  });
+
+  it('defaults to zero/unavailable when the body lacks quantity fields', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({ data: {} });
+
+    const stock = await adapter.getStock(106, 1);
+    expect(stock).toEqual({ idItem: 106, disponivel: false, quantidade: 0 });
+  });
+
+  it('falls back to qtAtual when qtDisponivel is absent', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({ data: { qtAtual: 5 } });
+
+    expect(await adapter.getStock(106, 1)).toEqual({ idItem: 106, disponivel: true, quantidade: 5 });
+  });
+
+  it('prefers qtDisponivel over qtAtual (zero disponível wins)', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({ data: { qtDisponivel: 0, qtAtual: 7 } });
+
+    expect(await adapter.getStock(106, 1)).toEqual({ idItem: 106, disponivel: false, quantidade: 0 });
+  });
+});

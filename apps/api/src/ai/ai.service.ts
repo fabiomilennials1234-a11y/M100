@@ -220,9 +220,10 @@ export class AiService implements AIProvider {
     return this.generateResponse(conversationId, contextMessages);
   }
 
-  /** Resolves the per-conversation tool context (cdFilial from the Channel Instance). */
+  /** Resolves the per-conversation tool context (Filial from the Channel Instance, customer phone). */
   private async resolveToolContext(conversation: {
     instanceId?: string;
+    externalPhone: string;
   }): Promise<ToolContext> {
     let cdFilial = DEFAULT_FILIAL;
     if (conversation.instanceId) {
@@ -231,7 +232,7 @@ export class AiService implements AIProvider {
       });
       if (instance?.cdFilial) cdFilial = instance.cdFilial;
     }
-    return { cdFilial };
+    return { cdFilial, phone: conversation.externalPhone };
   }
 
   private parseDecision(raw: string | null | undefined): AIDecision {

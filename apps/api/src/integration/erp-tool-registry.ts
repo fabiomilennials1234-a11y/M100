@@ -6,16 +6,18 @@ import {
   ToolDefinition,
   ToolRegistry,
 } from '@motor100/shared';
+import { IdentityResolver } from './identity-resolver';
 
 /**
  * Single source mapping the guardrail allowlist tool names to read-only ERP
- * queries. Owns the OpenRouter tool schemas and the dispatch → ErpQueryPort,
- * returning narrow DTOs (never raw Flex JSON).
+ * queries. Owns the OpenRouter tool schemas and the dispatch → ports,
+ * returning narrow DTOs (never raw Flex JSON, never internal ids to the model).
  */
 @Injectable()
 export class ErpToolRegistry implements ToolRegistry {
   constructor(
     @Inject(ERP_QUERY_PORT) private readonly erp: ErpQueryPort,
+    private readonly identity: IdentityResolver,
   ) {}
 
   definitions(): ToolDefinition[] {
@@ -38,6 +40,42 @@ export class ErpToolRegistry implements ToolRegistry {
           },
         },
       },
+      {
+        type: 'function',
+        function: {
+          name: 'check_stock',
+          description:
+            'Verifica a disponibilidade e a quantidade em estoque de um produto pelo seu idItem (obtido antes via get_product_info). Use quando o cliente perguntar se há em estoque ou quanto tem.',
+          parameters: {
+            type: 'object',
+            properties: {
+              idItem: {
+                type: 'number',
+                description: 'Identificador do produto (idItem) retornado por get_product_info.',
+              },
+            },
+            required: ['idItem'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'identify_customer',
+          description:
+            'Confirma a identidade do cliente pelo CPF ou CNPJ informado por ele. Necessário antes de consultar pedidos ou preço personalizado. Só vincula se o telefone bater com o cadastro.',
+          parameters: {
+            type: 'object',
+            properties: {
+              document: {
+                type: 'string',
+                description: 'CPF ou CNPJ informado pelo cliente (apenas dígitos ou formatado).',
+              },
+            },
+            required: ['document'],
+          },
+        },
+      },
     ];
   }
 
@@ -53,6 +91,26 @@ export class ErpToolRegistry implements ToolRegistry {
           ctx.cdFilial,
         );
         return { products };
+      }
+      case 'check_stock': {
+        const stock = await this.erp.getStock(
+          Number(args.idItem ?? 0),
+          ctx.cdFilial,
+        );
+        return stock;
+      }
+      case 'identify_customer': {
+        const result = await this.identity.resolve(
+          ctx.phone,
+          String(args.document ?? ''),
+        );
+        // Narrow, model-facing shape — never leak internal cdCliente.
+        return {
+          verified: result.verified,
+          nome: result.nome,
+          documento: result.maskedDocument,
+          motivo: result.reason,
+        };
       }
       default:
         throw new Error(`unmapped tool: ${name}`);
