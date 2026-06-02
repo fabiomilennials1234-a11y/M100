@@ -78,10 +78,13 @@ export class FlexErpAdapter implements ErpQueryPort {
   }
 
   private extractIds(data: unknown): number[] {
-    if (Array.isArray(data)) {
-      return data.filter((x): x is number => typeof x === 'number');
+    if (!Array.isArray(data)) {
+      this.logger.warn(
+        `Produto/Detalhada returned a non-array body (got ${typeof data}) — treating as no results`,
+      );
+      return [];
     }
-    return [];
+    return data.filter((x): x is number => typeof x === 'number');
   }
 
   /**

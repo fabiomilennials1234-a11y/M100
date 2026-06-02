@@ -1,25 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ERP_QUERY_PORT, ErpQueryPort } from '@motor100/shared';
-
-/** Context resolved per conversation and passed to every tool dispatch. */
-export interface ToolContext {
-  cdFilial: number;
-  // cdCliente arrives in a later slice (identity resolution).
-}
-
-/** OpenRouter-shaped function tool definition. */
-export interface ToolDefinition {
-  type: 'function';
-  function: {
-    name: string;
-    description: string;
-    parameters: {
-      type: 'object';
-      properties: Record<string, unknown>;
-      required: string[];
-    };
-  };
-}
+import {
+  ERP_QUERY_PORT,
+  ErpQueryPort,
+  ToolContext,
+  ToolDefinition,
+  ToolRegistry,
+} from '@motor100/shared';
 
 /**
  * Single source mapping the guardrail allowlist tool names to read-only ERP
@@ -27,7 +13,7 @@ export interface ToolDefinition {
  * returning narrow DTOs (never raw Flex JSON).
  */
 @Injectable()
-export class ErpToolRegistry {
+export class ErpToolRegistry implements ToolRegistry {
   constructor(
     @Inject(ERP_QUERY_PORT) private readonly erp: ErpQueryPort,
   ) {}

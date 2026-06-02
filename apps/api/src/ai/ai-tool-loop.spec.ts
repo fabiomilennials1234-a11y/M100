@@ -2,8 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AiService } from './ai.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MemoryService } from '../memory/memory.service';
-import { ErpToolRegistry } from '../integration/erp-tool-registry';
-import { AIAction, GUARDRAIL_PORT } from '@motor100/shared';
+import { AIAction, GUARDRAIL_PORT, TOOL_REGISTRY_PORT } from '@motor100/shared';
 import axios from 'axios';
 
 jest.mock('axios');
@@ -97,7 +96,7 @@ async function buildService(overrides?: {
       { provide: PrismaService, useValue: prisma },
       { provide: MemoryService, useValue: { retrieveRelevant: jest.fn().mockResolvedValue([]) } },
       { provide: GUARDRAIL_PORT, useValue: guardrail },
-      { provide: ErpToolRegistry, useValue: registry },
+      { provide: TOOL_REGISTRY_PORT, useValue: registry },
     ],
   }).compile();
 
@@ -166,5 +165,111 @@ describe('AiService — ERP tool-calling loop', () => {
     expect(registry.dispatch).not.toHaveBeenCalled();
     expect(decision.action).toBe(AIAction.RESPOND);
     expect(mockedAxios.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('hands off cleanly when the model returns null content (no tool calls)', async () => {
+    const { service } = await buildService();
+    mockedAxios.post.mockResolvedValueOnce({
+      data: { choices: [{ message: { role: 'assistant', content: null } }] },
+    });
+
+    const decision = await service.processMessage('conv-1');
+
+    expect(decision.action).toBe(AIAction.HANDOFF);
+    expect(decision.reason).toMatch(/no content/i);
+  });
+
+  it('dispatches multiple tool_calls in one round, in order', async () => {
+    const { service, registry } = await buildService();
+    mockedAxios.post
+      .mockResolvedValueOnce({
+        data: {
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: null,
+                tool_calls: [
+                  { id: 'c1', type: 'function', function: { name: 'get_product_info', arguments: '{"query":"junta"}' } },
+                  { id: 'c2', type: 'function', function: { name: 'get_product_info', arguments: '{"query":"retentor"}' } },
+                ],
+              },
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce(respondMessage('Achei os dois.'));
+
+    const decision = await service.processMessage('conv-1');
+
+    expect(registry.dispatch).toHaveBeenCalledTimes(2);
+    expect(registry.dispatch).toHaveBeenNthCalledWith(1, 'get_product_info', { query: 'junta' }, { cdFilial: 7 });
+    expect(registry.dispatch).toHaveBeenNthCalledWith(2, 'get_product_info', { query: 'retentor' }, { cdFilial: 7 });
+    expect(decision.action).toBe(AIAction.RESPOND);
+  });
+
+  it('falls back to the default Filial when the instance has none', async () => {
+    const { service, prisma, registry } = await buildService();
+    prisma.channelInstance.findUnique.mockResolvedValueOnce({ id: 'inst-1', cdFilial: null });
+    mockedAxios.post
+      .mockResolvedValueOnce(toolCallMessage({ query: 'x' }))
+      .mockResolvedValueOnce(respondMessage('ok'));
+
+    await service.processMessage('conv-1');
+
+    expect(registry.dispatch).toHaveBeenCalledWith('get_product_info', { query: 'x' }, { cdFilial: 1 });
+  });
+
+  it('tolerates malformed tool-call arguments (dispatches with empty args)', async () => {
+    const { service, registry } = await buildService();
+    mockedAxios.post
+      .mockResolvedValueOnce({
+        data: {
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: null,
+                tool_calls: [{ id: 'c1', type: 'function', function: { name: 'get_product_info', arguments: '{not valid json}' } }],
+              },
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce(respondMessage('Não entendi, pode repetir?'));
+
+    const decision = await service.processMessage('conv-1');
+
+    expect(registry.dispatch).toHaveBeenCalledWith('get_product_info', {}, { cdFilial: 7 });
+    expect(decision.action).toBe(AIAction.RESPOND);
+  });
+
+  it('answers at round 2 without hitting the cap', async () => {
+    const { service } = await buildService();
+    mockedAxios.post
+      .mockResolvedValueOnce(toolCallMessage({ query: 'a' }))
+      .mockResolvedValueOnce(respondMessage('Pronto.'));
+
+    const decision = await service.processMessage('conv-1');
+
+    expect(decision.action).toBe(AIAction.RESPOND);
+    expect(mockedAxios.post).toHaveBeenCalledTimes(2); // below the 3-round cap
+  });
+
+  it('does not echo the blocked tool name back to the model (anti-enumeration)', async () => {
+    const guardrail = {
+      interceptToolCall: jest.fn().mockReturnValue({ allowed: false, reason: 'tool_blocked: get_product_info' }),
+    };
+    const { service } = await buildService({ guardrail });
+    mockedAxios.post
+      .mockResolvedValueOnce(toolCallMessage({ query: 'x' }))
+      .mockResolvedValueOnce(respondMessage('ok'));
+
+    await service.processMessage('conv-1');
+
+    const secondCallMessages = (mockedAxios.post.mock.calls[1][1] as any).messages;
+    const toolMsg = secondCallMessages.find((m: any) => m.role === 'tool');
+    expect(toolMsg.content).toBe(JSON.stringify({ error: 'tool_unavailable' }));
+    expect(toolMsg.content).not.toContain('get_product_info');
   });
 });

@@ -9,3 +9,4 @@ export const AGENT_PORT = 'AGENT_PORT';
 export const REALTIME_PORT = 'REALTIME_PORT';
 export const INSTANCE_PORT = 'INSTANCE_PORT';
 export const ERP_QUERY_PORT = 'ERP_QUERY_PORT';
+export const TOOL_REGISTRY_PORT = 'TOOL_REGISTRY_PORT';

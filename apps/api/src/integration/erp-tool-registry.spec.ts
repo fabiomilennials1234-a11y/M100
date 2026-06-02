@@ -46,4 +46,18 @@ describe('ErpToolRegistry', () => {
       registry.dispatch('definitely_not_a_tool', {}, { cdFilial: 1 }),
     ).rejects.toThrow(/unmapped/i);
   });
+
+  it.each([
+    [{ query: 'junta' }, 'junta'],
+    [{ query: 123 }, '123'],
+    [{}, ''],
+    [{ query: null }, ''],
+  ])('coerces query arg %j to the string %j before querying', async (args, expected) => {
+    const { registry, erp } = setup();
+    erp.searchProducts.mockResolvedValue([]);
+
+    await registry.dispatch('get_product_info', args as any, { cdFilial: 1 });
+
+    expect(erp.searchProducts).toHaveBeenCalledWith(expected, 1);
+  });
 });

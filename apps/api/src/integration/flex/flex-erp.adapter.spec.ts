@@ -93,4 +93,41 @@ describe('FlexErpAdapter.searchProducts', () => {
     expect(auth.invalidate).toHaveBeenCalledTimes(1);
     expect(result).toHaveLength(1);
   });
+
+  it('retries a 401 on the second hop (getByIds), not just the search', async () => {
+    const { adapter, auth } = setup();
+    const unauthorized = Object.assign(new Error('Unauthorized'), {
+      response: { status: 401 },
+    });
+    mockedAxios.get
+      .mockResolvedValueOnce({ data: [1111] }) // Detalhada ok
+      .mockRejectedValueOnce(unauthorized) // getByIds → 401
+      .mockResolvedValueOnce({ data: [getByIdsRows[0]] }); // retry getByIds ok
+
+    const result = await adapter.searchProducts('junta', 1);
+
+    expect(auth.invalidate).toHaveBeenCalledTimes(1);
+    expect(result).toHaveLength(1);
+    expect(result[0].idItem).toBe(1111);
+  });
+
+  it('propagates the error when a 401 persists after retry', async () => {
+    const { adapter } = setup();
+    const unauthorized = Object.assign(new Error('Unauthorized'), {
+      response: { status: 401 },
+    });
+    mockedAxios.get.mockRejectedValue(unauthorized); // every call 401
+
+    await expect(adapter.searchProducts('junta', 1)).rejects.toThrow('Unauthorized');
+  });
+
+  it('treats a non-array search body as no results (defensive)', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({ data: { unexpected: 'shape' } });
+
+    const result = await adapter.searchProducts('junta', 1);
+
+    expect(result).toEqual([]);
+    expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+  });
 });

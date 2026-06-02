@@ -5,10 +5,12 @@ import {
   AIProvider,
   GUARDRAIL_PORT,
   GuardrailPort,
+  TOOL_REGISTRY_PORT,
+  ToolRegistry,
+  ToolContext,
 } from '@motor100/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { MemoryService } from '../memory/memory.service';
-import { ErpToolRegistry, ToolContext } from '../integration/erp-tool-registry';
 import axios from 'axios';
 
 /** Max tool rounds per message — bounds token cost and prevents infinite loops. */
@@ -42,7 +44,7 @@ export class AiService implements AIProvider {
     private readonly prisma: PrismaService,
     @Inject(MemoryService) @Optional() private readonly memory?: MemoryService,
     @Inject(GUARDRAIL_PORT) @Optional() private readonly guardrail?: GuardrailPort,
-    @Optional() private readonly tools?: ErpToolRegistry,
+    @Inject(TOOL_REGISTRY_PORT) @Optional() private readonly tools?: ToolRegistry,
   ) {
     this.apiKey = process.env.OPENROUTER_API_KEY ?? '';
     this.model = process.env.OPENROUTER_MODEL ?? 'anthropic/claude-sonnet-4-20250514';
@@ -130,8 +132,11 @@ export class AiService implements AIProvider {
 
     const intercept = this.guardrail!.interceptToolCall(name, args);
     if (!intercept.allowed) {
+      // Log the precise reason, but return a GENERIC error to the model — never
+      // echo the attempted tool name back, to avoid tool enumeration via a
+      // prompt-injected model.
       this.logger.warn(`Tool blocked by guardrail: ${name} (${intercept.reason})`);
-      return JSON.stringify({ error: intercept.reason ?? 'tool_blocked' });
+      return JSON.stringify({ error: 'tool_unavailable' });
     }
 
     try {
@@ -229,15 +234,18 @@ export class AiService implements AIProvider {
     return { cdFilial };
   }
 
-  private parseDecision(raw: string): AIDecision {
-    try {
-      const parsed = JSON.parse(raw);
-      const action = parsed.action === 'respond' ? AIAction.RESPOND : AIAction.HANDOFF;
+  private parseDecision(raw: string | null | undefined): AIDecision {
+    if (!raw || raw.trim() === '') {
+      this.logger.warn('AI returned empty content — forwarding to human agent');
       return {
-        action,
-        reason: parsed.reason ?? 'no reason provided',
-        message: action === AIAction.RESPOND ? parsed.message : undefined,
+        action: AIAction.HANDOFF,
+        reason: 'AI returned no content — forwarding to human agent',
       };
+    }
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(raw);
     } catch {
       this.logger.warn(`Failed to parse AI response: ${raw.slice(0, 100)}`);
       return {
@@ -245,5 +253,20 @@ export class AiService implements AIProvider {
         reason: 'AI response parse error — forwarding to human agent',
       };
     }
+
+    if (parsed.action !== 'respond' && parsed.action !== 'handoff') {
+      this.logger.warn(`AI decision missing/invalid action: ${raw.slice(0, 100)}`);
+      return {
+        action: AIAction.HANDOFF,
+        reason: 'AI response missing a valid action — forwarding to human agent',
+      };
+    }
+
+    const action = parsed.action === 'respond' ? AIAction.RESPOND : AIAction.HANDOFF;
+    return {
+      action,
+      reason: parsed.reason ?? 'no reason provided',
+      message: action === AIAction.RESPOND ? parsed.message : undefined,
+    };
   }
 }

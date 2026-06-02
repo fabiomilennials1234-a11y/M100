@@ -66,19 +66,37 @@ describe('FlexAuthSession', () => {
     expect(mockedAxios.post).toHaveBeenCalledTimes(2);
   });
 
-  it('re-logs in when the cached token has expired', async () => {
+  it('uses a fallback TTL when expires_at is unparseable (no throw)', async () => {
     const session = makeSession();
-    mockedAxios.post
-      .mockResolvedValueOnce({
-        data: { access_token: 'A', expires_at: 'already-past' },
-      })
-      .mockResolvedValueOnce({
-        data: { access_token: 'B', expires_at: 'Sun Nov 24 12:10:11 BRT 2099' },
-      });
+    mockedAxios.post.mockResolvedValue({
+      data: { access_token: 'A', expires_at: 'not-a-date' },
+    });
 
-    // First token uses fallback TTL (unparseable date) — still valid, so this
-    // only asserts the unparseable path doesn't throw and yields a token.
-    const first = await session.getToken();
-    expect(first).toBe('A');
+    expect(await session.getToken()).toBe('A');
+  });
+
+  it('serves the cached token until expiry, then re-logs in', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2099-01-01T00:00:00Z'));
+    const session = makeSession();
+    // expires 120s ahead → minus 60s skew → effectively valid for ~60s
+    mockedAxios.post.mockResolvedValue({
+      data: {
+        access_token: 'A',
+        expires_at: new Date('2099-01-01T00:02:00Z').toISOString(),
+      },
+    });
+
+    await session.getToken(); // login #1
+
+    jest.setSystemTime(new Date('2099-01-01T00:00:30Z')); // 30s → still cached
+    await session.getToken();
+    expect(mockedAxios.post).toHaveBeenCalledTimes(1);
+
+    jest.setSystemTime(new Date('2099-01-01T00:01:30Z')); // 90s → past skewed expiry
+    await session.getToken();
+    expect(mockedAxios.post).toHaveBeenCalledTimes(2);
+
+    jest.useRealTimers();
   });
 });
