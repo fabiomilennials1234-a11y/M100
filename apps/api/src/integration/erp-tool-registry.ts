@@ -61,6 +61,15 @@ export class ErpToolRegistry implements ToolRegistry {
       {
         type: 'function',
         function: {
+          name: 'check_order_status',
+          description:
+            'Consulta os pedidos do cliente e a situação de cada um. Requer que o cliente já tenha sido identificado (identify_customer). Use quando o cliente perguntar sobre o status/andamento de pedidos.',
+          parameters: { type: 'object', properties: {}, required: [] },
+        },
+      },
+      {
+        type: 'function',
+        function: {
           name: 'identify_customer',
           description:
             'Confirma a identidade do cliente pelo CPF ou CNPJ informado por ele. Necessário antes de consultar pedidos ou preço personalizado. Só vincula se o telefone bater com o cadastro.',
@@ -98,6 +107,14 @@ export class ErpToolRegistry implements ToolRegistry {
           ctx.cdFilial,
         );
         return stock;
+      }
+      case 'check_order_status': {
+        const binding = await this.identity.getBinding(ctx.phone);
+        if (!binding) {
+          return { erro: 'cliente_nao_identificado' };
+        }
+        const pedidos = await this.erp.getOrdersByCustomer(binding.cdCliente);
+        return { pedidos };
       }
       case 'identify_customer': {
         const result = await this.identity.resolve(

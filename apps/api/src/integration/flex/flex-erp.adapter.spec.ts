@@ -227,3 +227,48 @@ describe('FlexErpAdapter.getStock', () => {
     expect(await adapter.getStock(106, 1)).toEqual({ idItem: 106, disponivel: false, quantidade: 0 });
   });
 });
+
+describe('FlexErpAdapter.getOrdersByCustomer', () => {
+  afterEach(() => jest.clearAllMocks());
+
+  it('lists a customer orders with readable status, mapped to a narrow DTO', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({
+      data: [
+        { nrPedido: 95, cdSituacao: 20, nmSituacao: 'EM DIGITACAO', dtEmissao: '2021-12-22 00:00:00.0', vlTotal: 246.92 },
+        { nrPedido: 6896, cdSituacao: 13, nmSituacao: 'AGUARDANDO ESTOQUE', dtEmissao: '2021-12-22 00:00:00.0', vlTotal: 67.11 },
+      ],
+    });
+
+    const orders = await adapter.getOrdersByCustomer(1448);
+
+    const [url, cfg] = mockedAxios.get.mock.calls[0];
+    expect(url).toContain('/PedidoVenda/buscarPedidosVendaByCliente');
+    expect(url).toContain('cdCliente=1448');
+    expect(url).toContain('emAberto=false');
+    expect(url).toContain('origem=E');
+    expect(cfg).toEqual({ headers: { authToken: 'TK' } });
+    expect(orders).toEqual([
+      { nrPedido: 95, situacao: 'EM DIGITACAO', emissao: '2021-12-22 00:00:00.0', total: 246.92 },
+      { nrPedido: 6896, situacao: 'AGUARDANDO ESTOQUE', emissao: '2021-12-22 00:00:00.0', total: 67.11 },
+    ]);
+  });
+
+  it('falls back to the situation code when nmSituacao is absent', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({
+      data: [{ nrPedido: 1, cdSituacao: 14, dtEmissao: null, vlTotal: 10 }],
+    });
+
+    const orders = await adapter.getOrdersByCustomer(1);
+    expect(orders[0].situacao).toContain('14');
+    expect(orders[0].emissao).toBeNull();
+  });
+
+  it('returns empty for a non-array body (defensive)', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({ data: '' });
+
+    expect(await adapter.getOrdersByCustomer(1)).toEqual([]);
+  });
+});

@@ -8,7 +8,12 @@ function setup() {
   const erp = {
     searchProducts: jest.fn(),
     getStock: jest.fn(),
-  } as unknown as ErpQueryPort & { searchProducts: jest.Mock; getStock: jest.Mock };
+    getOrdersByCustomer: jest.fn(),
+  } as unknown as ErpQueryPort & {
+    searchProducts: jest.Mock;
+    getStock: jest.Mock;
+    getOrdersByCustomer: jest.Mock;
+  };
   const identity = {
     resolve: jest.fn(),
     getBinding: jest.fn(),
@@ -98,6 +103,30 @@ describe('ErpToolRegistry', () => {
     await registry.dispatch('check_stock', args as any, { ...CTX, cdFilial: 3 });
 
     expect(erp.getStock).toHaveBeenCalledWith(expected, 3);
+  });
+
+  it('refuses check_order_status when the customer is not identified', async () => {
+    const { registry, erp, identity } = setup();
+    (identity.getBinding as jest.Mock).mockResolvedValue(null);
+
+    const result: any = await registry.dispatch('check_order_status', {}, CTX);
+
+    expect(result).toEqual({ erro: 'cliente_nao_identificado' });
+    expect(erp.getOrdersByCustomer).not.toHaveBeenCalled();
+  });
+
+  it('returns orders for an identified customer using the bound cdCliente', async () => {
+    const { registry, erp, identity } = setup();
+    (identity.getBinding as jest.Mock).mockResolvedValue({ cdCliente: 1448 });
+    erp.getOrdersByCustomer.mockResolvedValue([
+      { nrPedido: 95, situacao: 'EM DIGITACAO', emissao: '2021-12-22', total: 246.92 },
+    ]);
+
+    const result: any = await registry.dispatch('check_order_status', {}, CTX);
+
+    expect(identity.getBinding).toHaveBeenCalledWith(CTX.phone);
+    expect(erp.getOrdersByCustomer).toHaveBeenCalledWith(1448);
+    expect(result).toEqual({ pedidos: [{ nrPedido: 95, situacao: 'EM DIGITACAO', emissao: '2021-12-22', total: 246.92 }] });
   });
 
   it('exposes identify_customer with a document param', () => {

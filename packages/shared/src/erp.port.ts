@@ -15,6 +15,14 @@ export interface ProductSummary {
   unidadeVenda: string;
 }
 
+/** Narrow sales-order view — human-readable status, no internal codes. */
+export interface OrderSummary {
+  nrPedido: number;
+  situacao: string;
+  emissao: string | null;
+  total: number;
+}
+
 /** Stock availability for an item in a Filial. */
 export interface StockInfo {
   idItem: number;
@@ -48,4 +56,7 @@ export interface ErpQueryPort {
 
   /** Stock availability of an item within a Filial. */
   getStock(idItem: number, cdFilial: number): Promise<StockInfo>;
+
+  /** Sales orders for a Cliente Flex (most recent first), with readable status. */
+  getOrdersByCustomer(cdCliente: number): Promise<OrderSummary[]>;
 }

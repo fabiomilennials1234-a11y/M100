@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   CustomerSummary,
   ErpQueryPort,
+  OrderSummary,
   ProductSummary,
   StockInfo,
 } from '@motor100/shared';
@@ -70,6 +71,25 @@ export class FlexErpAdapter implements ErpQueryPort {
     )) as any;
     const quantidade = Number(data?.qtDisponivel ?? data?.qtAtual ?? 0) || 0;
     return { idItem, disponivel: quantidade > 0, quantidade };
+  }
+
+  async getOrdersByCustomer(cdCliente: number): Promise<OrderSummary[]> {
+    // business sends emAberto=false; origem=E (external).
+    const params = new URLSearchParams({
+      cdCliente: String(cdCliente),
+      emAberto: 'false',
+      origem: 'E',
+    });
+    const data = await this.authedGet(
+      `${this.baseUrl}/PedidoVenda/buscarPedidosVendaByCliente?${params.toString()}`,
+    );
+    const rows: any[] = Array.isArray(data) ? data : [];
+    return rows.map((r) => ({
+      nrPedido: r.nrPedido,
+      situacao: r.nmSituacao ?? `Situação ${r.cdSituacao}`,
+      emissao: r.dtEmissao ?? null,
+      total: Number(r.vlTotal ?? 0) || 0,
+    }));
   }
 
   /** Hop 1: free-text search → list of idItem. Vehicle/ficha flags must be true. */
