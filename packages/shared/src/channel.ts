@@ -22,3 +22,11 @@ export interface ChannelSender {
 export interface ChannelReceiver {
   onMessage(handler: (message: InboundMessage) => Promise<void>): void;
 }
+
+/**
+ * Seeded by the Fase 6 migration. Legacy single-number flows (manual test
+ * endpoint, pre-multi-instance webhooks) attribute conversations to this
+ * instance until the per-instance webhook is wired (ChannelService refactor).
+ */
+export const DEFAULT_CHANNEL_INSTANCE_ID =
+  '00000000-0000-0000-0000-000000000001';

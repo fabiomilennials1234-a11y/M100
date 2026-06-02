@@ -13,6 +13,8 @@ describe('ConversationService — event emission', () => {
     mockPrisma = {
       conversation: {
         findUnique: jest.fn(),
+        findFirst: jest.fn(),
+        create: jest.fn(),
         update: jest.fn(),
       },
     };
@@ -30,6 +32,24 @@ describe('ConversationService — event emission', () => {
   });
 
   afterEach(() => jest.clearAllMocks());
+
+  it('links a newly created conversation to its originating channel instance', async () => {
+    mockPrisma.conversation.findFirst.mockResolvedValue(null);
+    mockPrisma.conversation.create.mockResolvedValue({
+      id: 'conv-1', externalPhone: '5511999', instanceId: 'inst-vendas',
+    });
+
+    await service.findOrCreate('5511999', 'inst-vendas');
+
+    expect(mockPrisma.conversation.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          externalPhone: '5511999',
+          instanceId: 'inst-vendas',
+        }),
+      }),
+    );
+  });
 
   it('emits OWNER_CHANGED when ownerType changes during transition', async () => {
     mockPrisma.conversation.findUnique.mockResolvedValue({
