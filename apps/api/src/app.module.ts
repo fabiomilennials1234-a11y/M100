@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { BullModule } from '@nestjs/bullmq';
 import { PrismaModule } from './prisma';
+import { CryptoModule } from './crypto';
 import { TracingModule } from './tracing';
 import { ConversationModule } from './conversation';
 import { RoutingModule } from './routing';
@@ -27,6 +28,7 @@ import { ApiModule } from './api';
       },
     }),
     PrismaModule,
+    CryptoModule,
     TracingModule,
     ConversationModule,
     RoutingModule,
