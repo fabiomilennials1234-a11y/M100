@@ -1,12 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { MessageProcessorService } from './message-processor.service';
-import { ConversationService } from '../conversation/conversation.service';
-import { AiService } from '../ai/ai.service';
-import { ChannelService } from '../channel/channel.service';
-import { GuardrailService } from '../guardrail/guardrail.service';
-import { SummaryService } from '../summary/summary.service';
-import { AIAction, DomainEvent, ROUTING_PORT } from '@motor100/shared';
+import {
+  AIAction, DomainEvent, ROUTING_PORT,
+  CONVERSATION_PORT, AI_PORT, CHANNEL_PORT, GUARDRAIL_PORT, SUMMARY_PORT,
+} from '@motor100/shared';
 import { getQueueToken } from '@nestjs/bullmq';
 import { TRACING_PROVIDER } from '../tracing/tracing.constants';
 import { NoopTracingProvider } from '../tracing/noop-tracing.provider';
@@ -71,11 +69,11 @@ describe('MessageProcessorService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MessageProcessorService,
-        { provide: ConversationService, useValue: conversationService },
-        { provide: AiService, useValue: aiService },
-        { provide: ChannelService, useValue: channelService },
-        { provide: GuardrailService, useValue: guardrailService },
-        { provide: SummaryService, useValue: summaryService },
+        { provide: CONVERSATION_PORT, useValue: conversationService },
+        { provide: AI_PORT, useValue: aiService },
+        { provide: CHANNEL_PORT, useValue: channelService },
+        { provide: GUARDRAIL_PORT, useValue: guardrailService },
+        { provide: SUMMARY_PORT, useValue: summaryService },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: getQueueToken('message-processing'), useValue: mockQueue },
         { provide: TRACING_PROVIDER, useValue: new NoopTracingProvider() },
@@ -90,11 +88,11 @@ describe('MessageProcessorService', () => {
   afterEach(() => jest.clearAllMocks());
 
   it('enqueues job on debounce.flushed event', async () => {
-    await service.handleDebounceFlushed({ phone: '+5511999990000', content: 'Oi' });
+    await service.handleDebounceFlushed({ phone: '+5511999990000', content: 'Oi', instanceId: 'inst-1' });
 
     expect(mockQueue.add).toHaveBeenCalledWith(
       'process-message',
-      { phone: '+5511999990000', content: 'Oi', timestamp: expect.any(Number) },
+      { phone: '+5511999990000', content: 'Oi', instanceId: 'inst-1', timestamp: expect.any(Number) },
       expect.objectContaining({
         attempts: 3,
         backoff: { type: 'exponential', delay: 1000 },
@@ -104,20 +102,23 @@ describe('MessageProcessorService', () => {
 
   it('processes job: conversation → AI → channel send on respond', async () => {
     const job = {
-      data: { phone: '+5511999990000', content: 'Qual prazo?' },
+      data: { phone: '+5511999990000', content: 'Qual prazo?', instanceId: 'inst-1' },
     };
 
     await service.processJob(job as any);
 
     expect(conversationService.handleInboundMessage).toHaveBeenCalledWith(
-      '+5511999990000', 'clean text', 'text',
+      '+5511999990000', 'clean text', 'text', 'inst-1',
     );
     expect(aiService.processMessage).toHaveBeenCalledWith('conv-1');
-    expect(channelService.send).toHaveBeenCalledWith({
-      to: '+5511999990000',
-      content: 'Prazo é 3-5 dias.',
-      type: 'text',
-    });
+    expect(channelService.send).toHaveBeenCalledWith(
+      {
+        to: '+5511999990000',
+        content: 'Prazo é 3-5 dias.',
+        type: 'text',
+      },
+      'inst-1',
+    );
   });
 
   it('calls requestHandoff when AI returns handoff', async () => {
@@ -191,11 +192,11 @@ describe('MessageProcessorService', () => {
         flags: ['cpf_redacted'],
       });
 
-      const job = { data: { phone: '+5511999990000', content: 'Meu CPF é 123.456.789-00' } };
+      const job = { data: { phone: '+5511999990000', content: 'Meu CPF é 123.456.789-00', instanceId: 'inst-1' } };
       await service.processJob(job as any);
 
       expect(conversationService.handleInboundMessage).toHaveBeenCalledWith(
-        '+5511999990000', 'Meu CPF é [CPF_REDACTED]', 'text',
+        '+5511999990000', 'Meu CPF é [CPF_REDACTED]', 'text', 'inst-1',
       );
     });
 

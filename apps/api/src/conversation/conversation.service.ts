@@ -7,6 +7,7 @@ import {
   STATUS_OWNER_MAP,
   isValidTransition,
   DomainEvent,
+  DEFAULT_CHANNEL_INSTANCE_ID,
 } from '@motor100/shared';
 import { Conversation, Prisma } from '@prisma/client';
 
@@ -17,7 +18,10 @@ export class ConversationService {
     private readonly events: EventEmitter2,
   ) {}
 
-  async findOrCreate(externalPhone: string): Promise<Conversation> {
+  async findOrCreate(
+    externalPhone: string,
+    instanceId: string,
+  ): Promise<Conversation> {
     const existing = await this.prisma.conversation.findFirst({
       where: {
         externalPhone,
@@ -29,7 +33,7 @@ export class ConversationService {
     if (existing) return existing;
 
     const conversation = await this.prisma.conversation.create({
-      data: { externalPhone },
+      data: { externalPhone, instanceId },
     });
 
     this.events.emit(DomainEvent.CONVERSATION_CREATED, { conversation });
@@ -115,8 +119,13 @@ export class ConversationService {
     }
   }
 
-  async handleInboundMessage(externalPhone: string, content: string, type = 'text') {
-    let conversation = await this.findOrCreate(externalPhone);
+  async handleInboundMessage(
+    externalPhone: string,
+    content: string,
+    type = 'text',
+    instanceId: string = DEFAULT_CHANNEL_INSTANCE_ID,
+  ) {
+    let conversation = await this.findOrCreate(externalPhone, instanceId);
 
     if (conversation.status === 'encerrada') {
       conversation = await this.transition(conversation.id, ConversationStatus.NOVA);

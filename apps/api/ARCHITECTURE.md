@@ -1,4 +1,4 @@
-```
+
 ╔══════════════════════════════════════════════════════════════════════════════════════╗
 ║                          MOTOR100 — ARQUITETURA FASE 5                              ║
 ║                     Monolito Modular · Ports & Adapters · NestJS                    ║

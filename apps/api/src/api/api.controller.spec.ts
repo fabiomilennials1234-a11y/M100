@@ -1,8 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ApiController } from './api.controller';
-import { ConversationService } from '../conversation/conversation.service';
-import { ChannelService } from '../channel/channel.service';
-import { AgentService } from '../agent/agent.service';
+import { CONVERSATION_PORT, CHANNEL_PORT, AGENT_PORT } from '@motor100/shared';
 import { SupabaseAuthGuard } from './supabase-auth.guard';
 import { ForbiddenException } from '@nestjs/common';
 
@@ -18,7 +16,7 @@ describe('ApiController', () => {
         { id: 'conv-1', externalPhone: '+5511999990000', status: 'na_fila', ownerType: 'queue' },
       ]),
       findById: jest.fn().mockResolvedValue({
-        id: 'conv-1', externalPhone: '+5511999990000', status: 'atendida_humano',
+        id: 'conv-1', externalPhone: '+5511999990000', instanceId: 'inst-1', status: 'atendida_humano',
         progressiveSummary: 'Resumo progressivo', finalSummary: null,
       }),
       getMessages: jest.fn().mockResolvedValue([
@@ -44,9 +42,9 @@ describe('ApiController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ApiController],
       providers: [
-        { provide: ConversationService, useValue: mockConversationService },
-        { provide: ChannelService, useValue: mockChannelService },
-        { provide: AgentService, useValue: mockAgentService },
+        { provide: CONVERSATION_PORT, useValue: mockConversationService },
+        { provide: CHANNEL_PORT, useValue: mockChannelService },
+        { provide: AGENT_PORT, useValue: mockAgentService },
       ],
     })
       .overrideGuard(SupabaseAuthGuard)
@@ -95,6 +93,7 @@ describe('ApiController', () => {
         to: '+5511999990000',
         content: 'Olá cliente',
       }),
+      'inst-1',
     );
   });
 

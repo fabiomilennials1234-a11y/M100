@@ -11,7 +11,11 @@ import { GuardrailService } from './guardrail/guardrail.service';
 import { SummaryService } from './summary/summary.service';
 import { MemoryService } from './memory/memory.service';
 import { PrismaService } from './prisma/prisma.service';
-import { AIAction, DomainEvent, ROUTING_PORT } from '@motor100/shared';
+import { CryptoService } from './crypto/crypto.service';
+import {
+  AIAction, DomainEvent, ROUTING_PORT,
+  CONVERSATION_PORT, AI_PORT, CHANNEL_PORT, GUARDRAIL_PORT, SUMMARY_PORT,
+} from '@motor100/shared';
 import { ConfigService } from '@nestjs/config';
 import { getQueueToken } from '@nestjs/bullmq';
 import { TRACING_PROVIDER } from './tracing/tracing.constants';
@@ -54,7 +58,18 @@ describe('E2E Integration — happy path', () => {
         { direction: 'inbound', sender: 'customer', content: 'Qual prazo?' },
       ]),
     },
+    channelInstance: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: 'inst-default',
+        serverUrl: 'https://srv.uazapi.com',
+        instanceToken: 'tok',
+        webhookSecret: 'test-secret',
+      }),
+    },
   };
+
+  // Identity crypto — e2e exercises wiring, not encryption internals.
+  const fakeCrypto = { encrypt: (s: string) => s, decrypt: (s: string) => s };
 
   beforeEach(async () => {
     process.env.UAZAPI_WEBHOOK_SECRET = 'test-secret';
@@ -76,11 +91,17 @@ describe('E2E Integration — happy path', () => {
         { provide: MemoryService, useValue: { retrieveRelevant: jest.fn().mockResolvedValue([]), storeMemory: jest.fn() } },
         { provide: SummaryService, useValue: { generateProgressiveSummary: jest.fn().mockResolvedValue('summary') } },
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: CryptoService, useValue: fakeCrypto },
         { provide: ConfigService, useValue: { get: jest.fn() } },
         { provide: getQueueToken('message-processing'), useValue: mockQueue },
         { provide: TRACING_PROVIDER, useValue: new NoopTracingProvider() },
         { provide: REDIS_CLIENT, useValue: { incr: jest.fn().mockResolvedValue(1), ttl: jest.fn().mockResolvedValue(-1), expire: jest.fn() } },
         { provide: ROUTING_PORT, useValue: { assignBestAgent: jest.fn().mockResolvedValue({ assigned: false, reason: 'no_agent_available' }) } },
+        { provide: CONVERSATION_PORT, useExisting: ConversationService },
+        { provide: AI_PORT, useExisting: AiService },
+        { provide: CHANNEL_PORT, useExisting: ChannelService },
+        { provide: GUARDRAIL_PORT, useExisting: GuardrailService },
+        { provide: SUMMARY_PORT, useExisting: SummaryService },
         RateLimitGuard,
       ],
     }).compile();
@@ -106,10 +127,10 @@ describe('E2E Integration — happy path', () => {
       },
     };
 
-    const result = await controller.handleUazapiWebhook(payload, 'test-secret');
+    const result = await controller.handleUazapiWebhook('inst-default', payload, 'test-secret');
 
     expect(result).toEqual({ received: true });
-    expect(debounceService.debounce).toHaveBeenCalledWith('+5511999990000', 'Oi, qual prazo?');
+    expect(debounceService.debounce).toHaveBeenCalledWith('+5511999990000', 'Oi, qual prazo?', 'inst-default');
   });
 
   it('processJob orchestrates full pipeline: conversation → AI → channel send', async () => {
@@ -131,7 +152,7 @@ describe('E2E Integration — happy path', () => {
         data: { key: { id: 'ext-sent-1' } },
       });
 
-    const job = { data: { phone: '+5511999990000', content: 'Qual prazo?' } };
+    const job = { data: { phone: '+5511999990000', content: 'Qual prazo?', instanceId: 'inst-default' } };
     await processorService.processJob(job as any);
 
     expect(mockPrisma.conversation.findFirst).toHaveBeenCalled();
@@ -144,6 +165,7 @@ describe('E2E Integration — happy path', () => {
     await processorService.handleDebounceFlushed({
       phone: '+5511999990000',
       content: 'Oi\ntudo bem?',
+      instanceId: 'inst-default',
     });
 
     expect(mockQueue.add).toHaveBeenCalledWith(
@@ -161,7 +183,7 @@ describe('E2E Integration — happy path', () => {
 
   it('rejects webhook with wrong secret', async () => {
     await expect(
-      controller.handleUazapiWebhook({ event: 'messages.upsert', data: {} }, 'wrong'),
+      controller.handleUazapiWebhook('inst-default', { event: 'messages.upsert', data: {} }, 'wrong'),
     ).rejects.toThrow();
   });
 
@@ -193,7 +215,7 @@ describe('E2E Integration — happy path', () => {
       id: 'conv-e2e', status: 'na_fila', ownerType: 'queue', version: 3,
     });
 
-    const job = { data: { phone: '+5511999990000', content: 'Quero cancelar' } };
+    const job = { data: { phone: '+5511999990000', content: 'Quero cancelar', instanceId: 'inst-default' } };
     await processorService.processJob(job as any);
 
     const updateCalls = mockPrisma.conversation.update.mock.calls;

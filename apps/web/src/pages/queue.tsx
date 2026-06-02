@@ -2,6 +2,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Inbox } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { apiFetch } from '@/lib/api';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface Conversation {
   id: string;
@@ -53,9 +58,9 @@ export function QueuePage() {
       {isLoading ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <div
+            <Skeleton
               key={i}
-              className="h-20 animate-pulse rounded-lg bg-card border border-border"
+              className="h-20 w-full rounded-lg"
               data-testid="queue-skeleton"
             />
           ))}
@@ -66,35 +71,36 @@ export function QueuePage() {
           <p className="text-sm">Nenhuma conversa na fila</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {conversations.map((conv) => (
-            <div
-              key={conv.id}
-              className="flex items-center justify-between rounded-lg border border-border bg-card p-4"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-foreground">{conv.phone}</p>
-                {conv.progressiveSummary && (
-                  <p className="mt-0.5 truncate text-sm text-muted-foreground">
-                    {conv.progressiveSummary}
-                  </p>
-                )}
-              </div>
-              <div className="ml-4 flex items-center gap-3">
-                <span className="text-xs text-muted-foreground">
-                  {timeAgo(conv.createdAt)}
-                </span>
-                <button
-                  onClick={() => assign.mutate(conv.id)}
-                  disabled={assign.isPending}
-                  className="cursor-pointer rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors duration-150 hover:bg-primary/90 disabled:opacity-50"
-                >
-                  Atender
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+        <ScrollArea className="h-[calc(100vh-10rem)]">
+          <div className="space-y-3 pr-3">
+            {conversations.map((conv) => (
+              <Card key={conv.id} size="sm">
+                <CardContent className="flex items-center justify-between">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-foreground">{conv.phone}</p>
+                    {conv.progressiveSummary && (
+                      <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                        {conv.progressiveSummary}
+                      </p>
+                    )}
+                  </div>
+                  <div className="ml-4 flex items-center gap-3">
+                    <Badge variant="secondary">
+                      {timeAgo(conv.createdAt)}
+                    </Badge>
+                    <Button
+                      onClick={() => assign.mutate(conv.id)}
+                      disabled={assign.isPending}
+                      size="sm"
+                    >
+                      Atender
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </ScrollArea>
       )}
     </div>
   );

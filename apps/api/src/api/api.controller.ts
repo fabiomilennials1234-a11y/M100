@@ -1,10 +1,11 @@
 import {
-  Controller, Get, Post, Patch, Param, Query, Body, Req,
+  Controller, Get, Post, Patch, Param, Query, Body, Req, Inject,
   UseGuards, ForbiddenException, ParseIntPipe, DefaultValuePipe,
 } from '@nestjs/common';
-import { ConversationService } from '../conversation/conversation.service';
-import { ChannelService } from '../channel/channel.service';
-import { AgentService } from '../agent/agent.service';
+import {
+  CONVERSATION_PORT, CHANNEL_PORT, AGENT_PORT,
+  ConversationPort, ChannelSender, AgentPort,
+} from '@motor100/shared';
 import { SupabaseAuthGuard } from './supabase-auth.guard';
 import { SendMessageDto, ReassignDto, UpdateAvailabilityDto, ConversationFilterDto } from './dto';
 
@@ -12,9 +13,9 @@ import { SendMessageDto, ReassignDto, UpdateAvailabilityDto, ConversationFilterD
 @UseGuards(SupabaseAuthGuard)
 export class ApiController {
   constructor(
-    private readonly conversationService: ConversationService,
-    private readonly channelService: ChannelService,
-    private readonly agentService: AgentService,
+    @Inject(CONVERSATION_PORT) private readonly conversation: ConversationPort,
+    @Inject(CHANNEL_PORT) private readonly channel: ChannelSender,
+    @Inject(AGENT_PORT) private readonly agent: AgentPort,
   ) {}
 
   @Post('auth/profile')
@@ -24,12 +25,12 @@ export class ApiController {
 
   @Get('conversations')
   async listConversations(@Query() filter: ConversationFilterDto) {
-    return this.conversationService.findMany(filter);
+    return this.conversation.findMany(filter);
   }
 
   @Get('conversations/:id')
   async getConversation(@Param('id') id: string) {
-    return this.conversationService.findById(id);
+    return this.conversation.findById(id);
   }
 
   @Get('conversations/:id/messages')
@@ -38,12 +39,12 @@ export class ApiController {
     @Query('take', new DefaultValuePipe(50), ParseIntPipe) take: number,
     @Query('skip', new DefaultValuePipe(0), ParseIntPipe) skip: number,
   ) {
-    return this.conversationService.getMessages(id, take, skip);
+    return this.conversation.getMessages(id, take, skip);
   }
 
   @Post('conversations/:id/assign')
   async assignConversation(@Param('id') id: string, @Req() req: any) {
-    return this.conversationService.assignAgent(id, req.agent.id);
+    return this.conversation.assignAgent(id, req.agent.id);
   }
 
   @Post('conversations/:id/messages')
@@ -52,24 +53,27 @@ export class ApiController {
     @Body() body: SendMessageDto,
     @Req() req: any,
   ) {
-    const message = await this.conversationService.handleOutboundMessage(id, body.content, 'agent');
-    const conversation = await this.conversationService.findById(id);
-    await this.channelService.send({
-      to: conversation!.externalPhone,
-      content: body.content,
-      type: 'text',
-    });
+    const message = await this.conversation.handleOutboundMessage(id, body.content, 'agent');
+    const conversation = await this.conversation.findById(id);
+    await this.channel.send(
+      {
+        to: conversation!.externalPhone,
+        content: body.content,
+        type: 'text',
+      },
+      conversation!.instanceId,
+    );
     return message;
   }
 
   @Post('conversations/:id/return-to-ai')
   async returnToAi(@Param('id') id: string) {
-    return this.conversationService.returnToAi(id);
+    return this.conversation.returnToAi(id);
   }
 
   @Post('conversations/:id/close')
   async closeConversation(@Param('id') id: string) {
-    return this.conversationService.close(id);
+    return this.conversation.close(id);
   }
 
   @Post('conversations/:id/reassign')
@@ -81,16 +85,16 @@ export class ApiController {
     if (req.agent.role !== 'supervisor' && req.agent.role !== 'admin') {
       throw new ForbiddenException('Only supervisors can reassign conversations');
     }
-    return this.conversationService.assignAgent(id, body.agentId);
+    return this.conversation.assignAgent(id, body.agentId);
   }
 
   @Get('metrics')
   async getMetrics() {
-    return this.conversationService.getMetrics();
+    return this.conversation.getMetrics();
   }
 
   @Patch('agents/me/status')
   async updateStatus(@Body() body: UpdateAvailabilityDto, @Req() req: any) {
-    return this.agentService.setAvailability(req.agent.id, body.availability);
+    return this.agent.setAvailability(req.agent.id, body.availability);
   }
 }

@@ -3,6 +3,7 @@ import { ConversationStatus, OwnerType } from './conversation';
 export interface ConversationEntity {
   id: string;
   externalPhone: string;
+  instanceId: string;
   status: ConversationStatus;
   ownerType: OwnerType;
   agentId: string | null;
@@ -41,9 +42,9 @@ export interface ConversationMetrics {
 }
 
 export interface ConversationPort {
-  findOrCreate(externalPhone: string): Promise<ConversationEntity>;
+  findOrCreate(externalPhone: string, instanceId: string): Promise<ConversationEntity>;
   transition(id: string, targetStatus: ConversationStatus, agentId?: string): Promise<ConversationEntity>;
-  handleInboundMessage(externalPhone: string, content: string, type?: string): Promise<{ conversation: ConversationEntity; message: MessageEntity }>;
+  handleInboundMessage(externalPhone: string, content: string, type?: string, instanceId?: string): Promise<{ conversation: ConversationEntity; message: MessageEntity }>;
   handleOutboundMessage(conversationId: string, content: string, senderType: string): Promise<MessageEntity>;
   requestHandoff(id: string): Promise<ConversationEntity>;
   assignAgent(id: string, agentId: string): Promise<ConversationEntity>;

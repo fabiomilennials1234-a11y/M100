@@ -3,6 +3,8 @@ import { Activity, Inbox, Bot, User, CheckCircle } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from 'recharts';
 import { useAuth } from '@/hooks/use-auth';
 import { apiFetch } from '@/lib/api';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface Metrics {
   active: number;
@@ -53,58 +55,61 @@ export function DashboardPage() {
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         {cards.map(({ label, value, icon: Icon, color }) => (
-          <div
-            key={label}
-            className="rounded-lg border border-border bg-card p-4"
-          >
-            {isLoading ? (
-              <div className="space-y-2" data-testid="metric-skeleton">
-                <div className="h-4 w-20 animate-pulse rounded bg-muted" />
-                <div className="h-8 w-12 animate-pulse rounded bg-muted" />
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">{label}</span>
-                  <Icon size={18} className={color} />
+          <Card key={label} size="sm">
+            <CardContent>
+              {isLoading ? (
+                <div className="space-y-2" data-testid="metric-skeleton">
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-8 w-12" />
                 </div>
-                <p className="mt-1 text-2xl font-bold text-foreground">
-                  {value ?? 0}
-                </p>
-              </>
-            )}
-          </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">{label}</span>
+                    <Icon size={18} className={color} />
+                  </div>
+                  <p className="mt-1 text-2xl font-bold text-foreground">
+                    {value ?? 0}
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
         ))}
       </div>
 
       {/* Chart */}
-      <div className="rounded-lg border border-border bg-card p-4">
-        <h2 className="mb-4 text-sm font-medium text-muted-foreground">
-          Conversas ao longo do dia
-        </h2>
-        <ResponsiveContainer width="100%" height={280}>
-          <AreaChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" />
-            <XAxis dataKey="hour" stroke="#94A3B8" fontSize={12} />
-            <YAxis stroke="#94A3B8" fontSize={12} />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: '#0F172A',
-                border: '1px solid #1E293B',
-                borderRadius: 8,
-                color: '#F8FAFC',
-              }}
-            />
-            <Area
-              type="monotone"
-              dataKey="conversations"
-              stroke="#6366F1"
-              fill="#6366F1"
-              fillOpacity={0.2}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
+      <Card>
+        <CardHeader>
+          <h2 className="text-sm font-medium text-muted-foreground">
+            Conversas ao longo do dia
+          </h2>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={280}>
+            <AreaChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="hour" stroke="var(--muted-foreground)" fontSize={12} />
+              <YAxis stroke="var(--muted-foreground)" fontSize={12} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: 'var(--card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  color: 'var(--foreground)',
+                }}
+              />
+              <Area
+                type="monotone"
+                dataKey="conversations"
+                stroke="var(--primary)"
+                fill="var(--primary)"
+                fillOpacity={0.15}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
     </div>
   );
 }

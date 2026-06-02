@@ -3,11 +3,15 @@ import { ChannelController } from './channel.controller';
 import { ConversationService } from '../conversation/conversation.service';
 import { DebounceService } from './debounce.service';
 import { RateLimitGuard, REDIS_CLIENT } from './rate-limit.guard';
+import { PrismaService } from '../prisma/prisma.service';
 import { UnauthorizedException, BadRequestException } from '@nestjs/common';
+
+const INSTANCE_ID = 'inst-1';
 
 describe('ChannelController', () => {
   let controller: ChannelController;
   let debounceService: DebounceService;
+  let module: TestingModule;
 
   const validPayload = {
     event: 'messages.upsert',
@@ -19,7 +23,7 @@ describe('ChannelController', () => {
   };
 
   beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
+    module = await Test.createTestingModule({
       controllers: [ChannelController],
       providers: [
         {
@@ -29,6 +33,17 @@ describe('ChannelController', () => {
         {
           provide: DebounceService,
           useValue: { debounce: jest.fn() },
+        },
+        {
+          provide: PrismaService,
+          useValue: {
+            channelInstance: {
+              findUnique: jest.fn().mockResolvedValue({
+                id: INSTANCE_ID,
+                webhookSecret: 'valid-secret',
+              }),
+            },
+          },
         },
         RateLimitGuard,
         {
@@ -40,38 +55,46 @@ describe('ChannelController', () => {
 
     controller = module.get(ChannelController);
     debounceService = module.get(DebounceService);
-
-    process.env.UAZAPI_WEBHOOK_SECRET = 'valid-secret';
   });
 
   it('returns { received: true } on valid webhook', async () => {
-    const result = await controller.handleUazapiWebhook(validPayload, 'valid-secret');
+    const result = await controller.handleUazapiWebhook(INSTANCE_ID, validPayload, 'valid-secret');
     expect(result).toEqual({ received: true });
   });
 
   it('rejects invalid token with 401', async () => {
     await expect(
-      controller.handleUazapiWebhook(validPayload, 'wrong-secret'),
+      controller.handleUazapiWebhook(INSTANCE_ID, validPayload, 'wrong-secret'),
     ).rejects.toThrow(UnauthorizedException);
   });
 
-  it('normalizes UAZAPI payload and routes to debounce', async () => {
-    await controller.handleUazapiWebhook(validPayload, 'valid-secret');
+  it('rejects unknown instance with 401', async () => {
+    const prisma = module.get(PrismaService);
+    (prisma.channelInstance.findUnique as jest.Mock).mockResolvedValueOnce(null);
+    await expect(
+      controller.handleUazapiWebhook('ghost', validPayload, 'valid-secret'),
+    ).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('normalizes UAZAPI payload and routes to debounce with the instanceId', async () => {
+    await controller.handleUazapiWebhook(INSTANCE_ID, validPayload, 'valid-secret');
 
     expect(debounceService.debounce).toHaveBeenCalledWith(
       '+5511999990000',
       'Oi, preciso de ajuda',
+      INSTANCE_ID,
     );
   });
 
   it('rejects malformed payload with 400', async () => {
     await expect(
-      controller.handleUazapiWebhook({ event: 'messages.upsert' }, 'valid-secret'),
+      controller.handleUazapiWebhook(INSTANCE_ID, { event: 'messages.upsert' }, 'valid-secret'),
     ).rejects.toThrow(BadRequestException);
   });
 
   it('ignores non-message events', async () => {
     const result = await controller.handleUazapiWebhook(
+      INSTANCE_ID,
       { event: 'connection.update', data: {} },
       'valid-secret',
     );
@@ -88,11 +111,12 @@ describe('ChannelController', () => {
       },
     };
 
-    await controller.handleUazapiWebhook(payload, 'valid-secret');
+    await controller.handleUazapiWebhook(INSTANCE_ID, payload, 'valid-secret');
 
     expect(debounceService.debounce).toHaveBeenCalledWith(
       '+5521888880000',
       'Oi, preciso de ajuda',
+      INSTANCE_ID,
     );
   });
 
@@ -105,7 +129,7 @@ describe('ChannelController', () => {
       },
     };
 
-    const result = await controller.handleUazapiWebhook(payload, 'valid-secret');
+    const result = await controller.handleUazapiWebhook(INSTANCE_ID, payload, 'valid-secret');
     expect(result).toEqual({ received: true });
     expect(debounceService.debounce).not.toHaveBeenCalled();
   });

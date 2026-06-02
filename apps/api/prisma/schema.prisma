@@ -60,27 +60,48 @@ enum AgentAvailability {
 }
 
 model Conversation {
-  id            String             @id @default(uuid())
-  externalPhone String             @map("external_phone")
-  status        ConversationStatus @default(nova)
-  ownerType     OwnerType          @default(none) @map("owner_type")
-  agentId       String?            @map("agent_id")
-  version              Int                @default(1)
-  metadata             Json?
-  progressiveSummary   String?            @map("progressive_summary")
-  finalSummary         String?            @map("final_summary")
-  summaryMessageCount  Int                @default(0) @map("summary_message_count")
-  createdAt            DateTime           @default(now()) @map("created_at")
-  updatedAt            DateTime           @updatedAt @map("updated_at")
-  closedAt             DateTime?          @map("closed_at")
+  id                  String             @id @default(uuid())
+  externalPhone       String             @map("external_phone")
+  instanceId          String             @map("instance_id")
+  status              ConversationStatus @default(nova)
+  ownerType           OwnerType          @default(none) @map("owner_type")
+  agentId             String?            @map("agent_id")
+  version             Int                @default(1)
+  metadata            Json?
+  progressiveSummary  String?            @map("progressive_summary")
+  finalSummary        String?            @map("final_summary")
+  summaryMessageCount Int                @default(0) @map("summary_message_count")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+  closedAt            DateTime?          @map("closed_at")
 
-  agent    Agent?    @relation(fields: [agentId], references: [id])
+  agent    Agent?          @relation(fields: [agentId], references: [id])
+  instance ChannelInstance @relation(fields: [instanceId], references: [id])
   messages Message[]
 
   @@index([externalPhone])
   @@index([status])
   @@index([agentId])
+  @@index([instanceId])
   @@map("conversations")
+}
+
+model ChannelInstance {
+  id            String   @id @default(uuid())
+  name          String
+  phone         String?
+  instanceName  String   @unique @map("instance_name")
+  serverUrl     String   @map("server_url")
+  instanceToken String   @map("instance_token") // AES-256-GCM encrypted via CryptoService
+  webhookSecret String   @map("webhook_secret")
+  status        String   @default("disconnected")
+  cdFilial      Int      @default(1) @map("cd_filial") // Filial do ERP Flex atendida por este número
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  conversations Conversation[]
+
+  @@map("channel_instances")
 }
 
 model Message {
@@ -102,14 +123,14 @@ model Message {
 }
 
 model Agent {
-  id           String            @id @default(uuid())
-  name         String
-  email        String            @unique
-  role         AgentRole         @default(attendant)
-  availability AgentAvailability @default(offline)
-  maxConcurrent Int              @default(5) @map("max_concurrent")
-  createdAt    DateTime          @default(now()) @map("created_at")
-  updatedAt    DateTime          @updatedAt @map("updated_at")
+  id            String            @id @default(uuid())
+  name          String
+  email         String            @unique
+  role          AgentRole         @default(attendant)
+  availability  AgentAvailability @default(offline)
+  maxConcurrent Int               @default(5) @map("max_concurrent")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
 
   conversations Conversation[]
 
@@ -117,11 +138,11 @@ model Agent {
 }
 
 model MemoryEmbedding {
-  id        String                   @id @default(uuid())
+  id        String                     @id @default(uuid())
   phone     String
   content   String
   embedding Unsupported("vector(384)")
-  createdAt DateTime                 @default(now()) @map("created_at")
+  createdAt DateTime                   @default(now()) @map("created_at")
 
   @@index([phone])
   @@map("memory_embeddings")

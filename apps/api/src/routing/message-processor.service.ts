@@ -2,12 +2,11 @@ import { Injectable, Logger, Inject } from '@nestjs/common';
 import { OnEvent, EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue, Job } from 'bullmq';
-import { ConversationService } from '../conversation/conversation.service';
-import { AiService } from '../ai/ai.service';
-import { ChannelService } from '../channel/channel.service';
-import { GuardrailService } from '../guardrail/guardrail.service';
-import { SummaryService } from '../summary/summary.service';
-import { AIAction, DomainEvent, TracingProvider, RoutingPort, ROUTING_PORT } from '@motor100/shared';
+import {
+  AIAction, DomainEvent, TracingProvider, RoutingPort,
+  ROUTING_PORT, CONVERSATION_PORT, AI_PORT, CHANNEL_PORT, GUARDRAIL_PORT, SUMMARY_PORT,
+  ConversationPort, AIProvider, ChannelSender, GuardrailPort, SummaryPort,
+} from '@motor100/shared';
 import { TRACING_PROVIDER } from '../tracing/tracing.constants';
 
 const SUMMARY_THRESHOLD = 10;
@@ -21,11 +20,11 @@ export class MessageProcessorService {
   };
 
   constructor(
-    private readonly conversationService: ConversationService,
-    private readonly aiService: AiService,
-    private readonly channelService: ChannelService,
-    private readonly guardrailService: GuardrailService,
-    private readonly summaryService: SummaryService,
+    @Inject(CONVERSATION_PORT) private readonly conversation: ConversationPort,
+    @Inject(AI_PORT) private readonly ai: AIProvider,
+    @Inject(CHANNEL_PORT) private readonly channel: ChannelSender,
+    @Inject(GUARDRAIL_PORT) private readonly guardrail: GuardrailPort,
+    @Inject(SUMMARY_PORT) private readonly summary: SummaryPort,
     @InjectQueue('message-processing') private readonly queue: Queue,
     @Inject(TRACING_PROVIDER) private readonly tracing: TracingProvider,
     private readonly events: EventEmitter2,
@@ -33,12 +32,17 @@ export class MessageProcessorService {
   ) {}
 
   @OnEvent(DomainEvent.DEBOUNCE_FLUSHED)
-  async handleDebounceFlushed(payload: { phone: string; content: string }) {
+  async handleDebounceFlushed(payload: {
+    phone: string;
+    content: string;
+    instanceId: string;
+  }) {
     await this.queue.add(
       'process-message',
       {
         phone: payload.phone,
         content: payload.content,
+        instanceId: payload.instanceId,
         timestamp: Date.now(),
       },
       {
@@ -50,13 +54,15 @@ export class MessageProcessorService {
     );
   }
 
-  async processJob(job: Job<{ phone: string; content: string }>) {
-    const { phone, content } = job.data;
+  async processJob(
+    job: Job<{ phone: string; content: string; instanceId: string }>,
+  ) {
+    const { phone, content, instanceId } = job.data;
     const trace = this.tracing.startTrace(`job-${job.id}`, { phone });
 
     try {
       const spanGuardrailIn = trace.startSpan('guardrail.sanitizeInput');
-      const sanitized = this.guardrailService.sanitizeInput(content);
+      const sanitized = this.guardrail.sanitizeInput(content);
       spanGuardrailIn.end({ piiRedacted: sanitized.piiRedacted, injectionFlagged: sanitized.injectionFlagged });
 
       if (sanitized.injectionFlagged) {
@@ -64,37 +70,37 @@ export class MessageProcessorService {
       }
 
       const spanConversation = trace.startSpan('conversation.handleInbound');
-      const { conversation } = await this.conversationService.handleInboundMessage(
-        phone, sanitized.sanitized, 'text',
+      const { conversation } = await this.conversation.handleInboundMessage(
+        phone, sanitized.sanitized, 'text', instanceId,
       );
       spanConversation.end({ conversationId: conversation.id, status: conversation.status });
 
       const messageCount = (conversation.summaryMessageCount ?? 0) + 1;
       if (messageCount % SUMMARY_THRESHOLD === 0) {
-        this.summaryService.generateProgressiveSummary(conversation.id).catch(err =>
+        this.summary.generateProgressiveSummary(conversation.id).catch(err =>
           this.logger.error(`Progressive summary failed: ${err}`),
         );
       }
 
       const spanAi = trace.startSpan('ai.processMessage', { conversationId: conversation.id });
-      const decision = await this.aiService.processMessage(conversation.id);
+      const decision = await this.ai.processMessage(conversation.id);
       spanAi.end({ action: decision.action, reason: decision.reason });
 
       this.events.emit(DomainEvent.AI_RESPONSE_GENERATED, { conversation, decision });
 
       if (decision.action === AIAction.RESPOND && decision.message) {
         const spanGuardrailOut = trace.startSpan('guardrail.validateOutput');
-        const validation = this.guardrailService.validateOutput(decision.message);
+        const validation = this.guardrail.validateOutput(decision.message);
         spanGuardrailOut.end({ valid: validation.valid, action: validation.action });
 
         if (!validation.valid) {
           this.logger.warn(`Output guardrail blocked: ${validation.reason}`);
           const spanHandoff = trace.startSpan('conversation.handoff');
-          await this.conversationService.requestHandoff(conversation.id);
+          await this.conversation.requestHandoff(conversation.id);
 
           const routingResult = await this.routing.assignBestAgent(conversation.id);
           if (routingResult.assigned) {
-            await this.conversationService.assignAgent(conversation.id, routingResult.agentId);
+            await this.conversation.assignAgent(conversation.id, routingResult.agentId);
             this.events.emit(DomainEvent.HANDOFF_COMPLETED, {
               conversationId: conversation.id,
               agentId: routingResult.agentId,
@@ -106,22 +112,25 @@ export class MessageProcessorService {
         }
 
         const spanSend = trace.startSpan('channel.send');
-        await this.channelService.send({
-          to: phone,
-          content: decision.message,
-          type: 'text',
-        });
+        await this.channel.send(
+          {
+            to: phone,
+            content: decision.message,
+            type: 'text',
+          },
+          instanceId,
+        );
         spanSend.end({ sent: true });
       } else if (decision.action === AIAction.HANDOFF) {
         const spanHandoff = trace.startSpan('conversation.handoff');
-        await this.conversationService.requestHandoff(conversation.id);
+        await this.conversation.requestHandoff(conversation.id);
 
         const spanRouting = trace.startSpan('routing.assignBestAgent');
         const routingResult = await this.routing.assignBestAgent(conversation.id);
         spanRouting.end(routingResult);
 
         if (routingResult.assigned) {
-          await this.conversationService.assignAgent(conversation.id, routingResult.agentId);
+          await this.conversation.assignAgent(conversation.id, routingResult.agentId);
           this.events.emit(DomainEvent.HANDOFF_COMPLETED, {
             conversationId: conversation.id,
             agentId: routingResult.agentId,
