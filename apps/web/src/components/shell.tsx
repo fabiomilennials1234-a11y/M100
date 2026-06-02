@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, Inbox, MessageSquare, Sun, Moon, LogOut, Menu } from 'lucide-react';
+import { LayoutDashboard, Inbox, MessageSquare, Settings, Sun, Moon, LogOut, Menu } from 'lucide-react';
 import { useState } from 'react';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/hooks/use-auth';
@@ -34,15 +34,22 @@ const navItems = [
   { to: '/conversations', label: 'Conversas', icon: MessageSquare },
 ] as const;
 
+const adminNavItems = [
+  { to: '/settings', label: 'Números', icon: Settings },
+] as const;
+
 function NavContent() {
   const { theme, toggleTheme } = useTheme();
   const { agent, signOut } = useAuth();
+
+  const items =
+    agent?.role === 'admin' ? [...navItems, ...adminNavItems] : navItems;
 
   return (
     <>
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-3 py-2">
-        {navItems.map(({ to, label, icon: Icon }) => (
+        {items.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}

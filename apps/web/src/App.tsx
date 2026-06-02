@@ -8,6 +8,7 @@ import { LoginPage } from '@/pages/login';
 import { DashboardPage } from '@/pages/dashboard';
 import { QueuePage } from '@/pages/queue';
 import { WorkspacePage } from '@/pages/workspace';
+import { SettingsPage } from '@/pages/settings';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,6 +36,7 @@ export function App() {
               <Route index element={<DashboardPage />} />
               <Route path="queue" element={<QueuePage />} />
               <Route path="conversations/:id" element={<WorkspacePage />} />
+              <Route path="settings" element={<SettingsPage />} />
             </Route>
           </Routes>
         </BrowserRouter>
