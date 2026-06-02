@@ -8,7 +8,7 @@ function setup() {
   const prisma = {
     identityBinding: {
       findUnique: jest.fn().mockResolvedValue(null),
-      upsert: jest.fn().mockResolvedValue({}),
+      create: jest.fn().mockResolvedValue({}),
     },
   };
   const resolver = new IdentityResolver(erp, prisma as any);
@@ -33,10 +33,9 @@ describe('IdentityResolver', () => {
     expect(result.verified).toBe(true);
     expect(result.cdCliente).toBe(8401);
     expect(result.maskedDocument).toMatch(/918$/);
-    expect(prisma.identityBinding.upsert).toHaveBeenCalledWith(
+    expect(prisma.identityBinding.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { phone: '+5549999991234' },
-        create: expect.objectContaining({ phone: '+5549999991234', cdCliente: 8401 }),
+        data: expect.objectContaining({ phone: '+5549999991234', cdCliente: 8401, verified: true }),
       }),
     );
   });
@@ -49,7 +48,7 @@ describe('IdentityResolver', () => {
 
     expect(result.verified).toBe(false);
     expect(result.reason).toBe('phone_mismatch');
-    expect(prisma.identityBinding.upsert).not.toHaveBeenCalled();
+    expect(prisma.identityBinding.create).not.toHaveBeenCalled();
   });
 
   it('rejects a cross-DDD collision (same last 8 digits, different area code)', async () => {
@@ -61,7 +60,21 @@ describe('IdentityResolver', () => {
 
     expect(result.verified).toBe(false);
     expect(result.reason).toBe('phone_mismatch');
-    expect(prisma.identityBinding.upsert).not.toHaveBeenCalled();
+    expect(prisma.identityBinding.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects DDDs that share the same final digit (11 vs 21) — last-8 alone would collide', async () => {
+    const { resolver, erp, prisma } = setup();
+    erp.getCustomerByDocument.mockResolvedValue({
+      ...customer,
+      telefones: ['21 9 9999-1234'], // DDD 21
+    });
+
+    // DDD 11, same trailing 8 digits — must NOT match (key includes the DDD).
+    const result = await resolver.resolve('+5511999991234', '07100189918');
+
+    expect(result.verified).toBe(false);
+    expect(result.reason).toBe('phone_mismatch');
   });
 
   it('reports no_phones_on_record when the cadastro has no phones', async () => {
@@ -72,7 +85,7 @@ describe('IdentityResolver', () => {
 
     expect(result.verified).toBe(false);
     expect(result.reason).toBe('no_phones_on_record');
-    expect(prisma.identityBinding.upsert).not.toHaveBeenCalled();
+    expect(prisma.identityBinding.create).not.toHaveBeenCalled();
   });
 
   it('refuses to rebind a phone already linked to a different cliente (anti-hijack)', async () => {
@@ -87,7 +100,7 @@ describe('IdentityResolver', () => {
 
     expect(result.verified).toBe(false);
     expect(result.reason).toBe('binding_conflict');
-    expect(prisma.identityBinding.upsert).not.toHaveBeenCalled();
+    expect(prisma.identityBinding.create).not.toHaveBeenCalled();
   });
 
   it('is idempotent when re-binding the same phone to the same cliente', async () => {
@@ -101,7 +114,7 @@ describe('IdentityResolver', () => {
     const result = await resolver.resolve('+5549999991234', '07100189918');
 
     expect(result.verified).toBe(true);
-    expect(prisma.identityBinding.upsert).toHaveBeenCalled();
+    expect(prisma.identityBinding.create).not.toHaveBeenCalled();
   });
 
   it('reports not_found when there is no cadastro for the document', async () => {
@@ -112,7 +125,7 @@ describe('IdentityResolver', () => {
 
     expect(result.verified).toBe(false);
     expect(result.reason).toBe('not_found');
-    expect(prisma.identityBinding.upsert).not.toHaveBeenCalled();
+    expect(prisma.identityBinding.create).not.toHaveBeenCalled();
   });
 
   it('returns an existing verified binding for a phone', async () => {

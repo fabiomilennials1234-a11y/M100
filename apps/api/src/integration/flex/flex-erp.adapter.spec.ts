@@ -212,4 +212,18 @@ describe('FlexErpAdapter.getStock', () => {
     const stock = await adapter.getStock(106, 1);
     expect(stock).toEqual({ idItem: 106, disponivel: false, quantidade: 0 });
   });
+
+  it('falls back to qtAtual when qtDisponivel is absent', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({ data: { qtAtual: 5 } });
+
+    expect(await adapter.getStock(106, 1)).toEqual({ idItem: 106, disponivel: true, quantidade: 5 });
+  });
+
+  it('prefers qtDisponivel over qtAtual (zero disponível wins)', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({ data: { qtDisponivel: 0, qtAtual: 7 } });
+
+    expect(await adapter.getStock(106, 1)).toEqual({ idItem: 106, disponivel: false, quantidade: 0 });
+  });
 });

@@ -86,6 +86,20 @@ describe('ErpToolRegistry', () => {
     expect(result).toEqual({ idItem: 106, disponivel: true, quantidade: 4 });
   });
 
+  it.each([
+    [{ idItem: 106 }, 106],
+    [{ idItem: '106' }, 106],
+    [{}, 0],
+    [{ idItem: null }, 0],
+  ])('coerces check_stock idItem %j to number %j', async (args, expected) => {
+    const { registry, erp } = setup();
+    erp.getStock.mockResolvedValue({ idItem: expected, disponivel: false, quantidade: 0 });
+
+    await registry.dispatch('check_stock', args as any, { ...CTX, cdFilial: 3 });
+
+    expect(erp.getStock).toHaveBeenCalledWith(expected, 3);
+  });
+
   it('exposes identify_customer with a document param', () => {
     const { registry } = setup();
     const tool = registry.definitions().find((d) => d.function.name === 'identify_customer');
@@ -111,7 +125,7 @@ describe('ErpToolRegistry', () => {
     expect(JSON.stringify(result)).not.toContain('8401');
   });
 
-  it.each(['not_found', 'phone_mismatch', 'binding_conflict'])(
+  it.each(['not_found', 'phone_mismatch', 'binding_conflict', 'no_phones_on_record'])(
     'maps identity failure reason %s to motivo for the model',
     async (reason) => {
       const { registry, identity } = setup();

@@ -39,37 +39,44 @@ export class IdentityResolver {
     }
 
     if (customer.telefones.length === 0) {
-      this.logger.warn(
-        `Cliente ${customer.cdCliente} has no phones on cadastro — cannot verify`,
-      );
+      // Never log the internal cdCliente.
+      this.logger.warn('Cliente without phones on cadastro — cannot verify');
       return { verified: false, reason: 'no_phones_on_record' };
     }
 
     const matches = customer.telefones.some((t) => this.phonesMatch(phone, t));
     if (!matches) {
-      this.logger.warn(
-        `Identity phone mismatch for cdCliente ${customer.cdCliente} — binding refused`,
-      );
+      this.logger.warn('Identity phone mismatch — binding refused');
       return { verified: false, reason: 'phone_mismatch' };
     }
 
-    // Binding is write-once per phone: never let a different document rebind a
-    // phone already linked to another cliente (anti-hijack).
+    // Binding is write-once per phone: a phone already linked to a DIFFERENT
+    // cliente is never rebound (anti-hijack). Concurrency is closed by the DB
+    // unique constraint on phone + create-then-catch (no silent overwrite).
     const existing = await this.prisma.identityBinding.findUnique({
       where: { phone },
     });
-    if (existing && existing.cdCliente !== customer.cdCliente) {
-      this.logger.error(
-        `Binding conflict for phone — already linked to a different cliente; refused`,
-      );
-      return { verified: false, reason: 'binding_conflict' };
+    if (existing) {
+      if (existing.cdCliente !== customer.cdCliente) {
+        this.logger.error('Binding conflict — phone already linked elsewhere; refused');
+        return { verified: false, reason: 'binding_conflict' };
+      }
+      // Same cliente — already bound, idempotent.
+    } else {
+      try {
+        await this.prisma.identityBinding.create({
+          data: { phone, cdCliente: customer.cdCliente, verified: true },
+        });
+      } catch {
+        // Lost a concurrent create race — re-read and treat a different
+        // cliente as a conflict rather than overwriting.
+        const now = await this.prisma.identityBinding.findUnique({ where: { phone } });
+        if (now && now.cdCliente !== customer.cdCliente) {
+          this.logger.error('Binding conflict (concurrent) — refused');
+          return { verified: false, reason: 'binding_conflict' };
+        }
+      }
     }
-
-    await this.prisma.identityBinding.upsert({
-      where: { phone },
-      create: { phone, cdCliente: customer.cdCliente, verified: true },
-      update: { cdCliente: customer.cdCliente, verified: true },
-    });
 
     return {
       verified: true,
@@ -87,13 +94,22 @@ export class IdentityResolver {
     return binding ? { cdCliente: binding.cdCliente } : null;
   }
 
+  /**
+   * Compares phones by a normalized key (DDD + last 8 subscriber digits).
+   * Stripping the country code + the optional mobile 9th digit avoids both
+   * cross-DDD collisions and 9-digit formatting variance.
+   */
   private phonesMatch(a: string, b: string): boolean {
-    const da = this.normalize(a);
-    const db = this.normalize(b);
-    if (da.length < MATCH_DIGITS || db.length < MATCH_DIGITS) {
-      return da === db && da.length > 0;
-    }
-    return da.slice(-MATCH_DIGITS) === db.slice(-MATCH_DIGITS);
+    const ka = this.key(a);
+    const kb = this.key(b);
+    return ka !== '' && ka === kb;
+  }
+
+  /** Normalized comparison key: DDD (2) + last 8 digits, after stripping DDI 55. */
+  private key(s: string): string {
+    const d = this.normalize(s);
+    if (d.length < MATCH_DIGITS) return '';
+    return d.slice(0, 2) + d.slice(-8);
   }
 
   /** Digits only, with the Brazilian country code (55) stripped when present. */
