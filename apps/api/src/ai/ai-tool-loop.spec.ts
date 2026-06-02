@@ -118,7 +118,7 @@ describe('AiService — ERP tool-calling loop', () => {
     expect(registry.dispatch).toHaveBeenCalledWith(
       'get_product_info',
       { query: 'junta tampa' },
-      { cdFilial: 7 },
+      { cdFilial: 7, phone: '+5511999990000' },
     );
     // final answer after the tool round
     expect(decision.action).toBe(AIAction.RESPOND);
@@ -203,8 +203,8 @@ describe('AiService — ERP tool-calling loop', () => {
     const decision = await service.processMessage('conv-1');
 
     expect(registry.dispatch).toHaveBeenCalledTimes(2);
-    expect(registry.dispatch).toHaveBeenNthCalledWith(1, 'get_product_info', { query: 'junta' }, { cdFilial: 7 });
-    expect(registry.dispatch).toHaveBeenNthCalledWith(2, 'get_product_info', { query: 'retentor' }, { cdFilial: 7 });
+    expect(registry.dispatch).toHaveBeenNthCalledWith(1, 'get_product_info', { query: 'junta' }, { cdFilial: 7, phone: '+5511999990000' });
+    expect(registry.dispatch).toHaveBeenNthCalledWith(2, 'get_product_info', { query: 'retentor' }, { cdFilial: 7, phone: '+5511999990000' });
     expect(decision.action).toBe(AIAction.RESPOND);
   });
 
@@ -217,7 +217,7 @@ describe('AiService — ERP tool-calling loop', () => {
 
     await service.processMessage('conv-1');
 
-    expect(registry.dispatch).toHaveBeenCalledWith('get_product_info', { query: 'x' }, { cdFilial: 1 });
+    expect(registry.dispatch).toHaveBeenCalledWith('get_product_info', { query: 'x' }, { cdFilial: 1, phone: '+5511999990000' });
   });
 
   it('tolerates malformed tool-call arguments (dispatches with empty args)', async () => {
@@ -240,7 +240,7 @@ describe('AiService — ERP tool-calling loop', () => {
 
     const decision = await service.processMessage('conv-1');
 
-    expect(registry.dispatch).toHaveBeenCalledWith('get_product_info', {}, { cdFilial: 7 });
+    expect(registry.dispatch).toHaveBeenCalledWith('get_product_info', {}, { cdFilial: 7, phone: '+5511999990000' });
     expect(decision.action).toBe(AIAction.RESPOND);
   });
 

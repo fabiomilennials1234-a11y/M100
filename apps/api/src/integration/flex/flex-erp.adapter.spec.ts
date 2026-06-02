@@ -131,3 +131,51 @@ describe('FlexErpAdapter.searchProducts', () => {
     expect(mockedAxios.get).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('FlexErpAdapter.getCustomerByDocument', () => {
+  afterEach(() => jest.clearAllMocks());
+
+  it('looks up a customer by CPF/CNPJ and maps a narrow DTO with cadastro phones', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({
+      data: {
+        cdCliente: 8401,
+        nmCliente: 'Fulano de Tal',
+        fone: '49 3333-0000',
+        fone2: '49 9 9999-1234',
+        cdVendedor: 109,
+      },
+    });
+
+    const customer = await adapter.getCustomerByDocument('07100189918');
+
+    const [url, cfg] = mockedAxios.get.mock.calls[0];
+    expect(url).toContain('/Cliente/getByCpfCnpj');
+    expect(url).toContain('cpfCnpj=07100189918');
+    expect(cfg).toEqual({ headers: { authToken: 'TK' } });
+    expect(customer).toEqual({
+      cdCliente: 8401,
+      nome: 'Fulano de Tal',
+      telefones: ['49 3333-0000', '49 9 9999-1234'],
+      vendedorId: 109,
+    });
+  });
+
+  it('returns null when there is no cadastro for the document', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({ data: '' });
+
+    expect(await adapter.getCustomerByDocument('00000000000')).toBeNull();
+  });
+
+  it('maps a missing vendedor to null', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({
+      data: { cdCliente: 1, nmCliente: 'Sem Vendedor', fone: '49 3000-0000' },
+    });
+
+    const customer = await adapter.getCustomerByDocument('11111111111');
+    expect(customer?.vendedorId).toBeNull();
+    expect(customer?.telefones).toEqual(['49 3000-0000']);
+  });
+});

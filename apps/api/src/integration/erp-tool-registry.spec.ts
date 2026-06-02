@@ -1,12 +1,19 @@
-import { ErpQueryPort } from '@motor100/shared';
+import { ErpQueryPort, ToolContext } from '@motor100/shared';
 import { ErpToolRegistry } from './erp-tool-registry';
+import { IdentityResolver } from './identity-resolver';
+
+const CTX: ToolContext = { cdFilial: 1, phone: '+554999991234' };
 
 function setup() {
   const erp = {
     searchProducts: jest.fn(),
   } as unknown as ErpQueryPort & { searchProducts: jest.Mock };
-  const registry = new ErpToolRegistry(erp);
-  return { registry, erp };
+  const identity = {
+    resolve: jest.fn(),
+    getBinding: jest.fn(),
+  } as unknown as IdentityResolver & { resolve: jest.Mock };
+  const registry = new ErpToolRegistry(erp, identity);
+  return { registry, erp, identity };
 }
 
 describe('ErpToolRegistry', () => {
@@ -29,7 +36,7 @@ describe('ErpToolRegistry', () => {
     const result = await registry.dispatch(
       'get_product_info',
       { query: 'junta' },
-      { cdFilial: 7 },
+      { ...CTX, cdFilial: 7 },
     );
 
     expect(erp.searchProducts).toHaveBeenCalledWith('junta', 7);
@@ -43,7 +50,7 @@ describe('ErpToolRegistry', () => {
   it('throws on an unmapped tool name', async () => {
     const { registry } = setup();
     await expect(
-      registry.dispatch('definitely_not_a_tool', {}, { cdFilial: 1 }),
+      registry.dispatch('definitely_not_a_tool', {}, CTX),
     ).rejects.toThrow(/unmapped/i);
   });
 
@@ -56,8 +63,32 @@ describe('ErpToolRegistry', () => {
     const { registry, erp } = setup();
     erp.searchProducts.mockResolvedValue([]);
 
-    await registry.dispatch('get_product_info', args as any, { cdFilial: 1 });
+    await registry.dispatch('get_product_info', args as any, CTX);
 
     expect(erp.searchProducts).toHaveBeenCalledWith(expected, 1);
+  });
+
+  it('exposes identify_customer with a document param', () => {
+    const { registry } = setup();
+    const tool = registry.definitions().find((d) => d.function.name === 'identify_customer');
+    expect(tool).toBeDefined();
+    expect(tool!.function.parameters.required).toContain('document');
+  });
+
+  it('dispatches identify_customer to the resolver using the context phone, hiding cdCliente', async () => {
+    const { registry, identity } = setup();
+    (identity.resolve as jest.Mock).mockResolvedValue({
+      verified: true,
+      cdCliente: 8401,
+      nome: 'Fulano',
+      maskedDocument: '...918',
+      vendedorId: 109,
+    });
+
+    const result = await registry.dispatch('identify_customer', { document: '07100189918' }, CTX);
+
+    expect(identity.resolve).toHaveBeenCalledWith('+554999991234', '07100189918');
+    expect(result).toEqual({ verified: true, nome: 'Fulano', documento: '...918', motivo: undefined });
+    expect(JSON.stringify(result)).not.toContain('8401'); // internal id never reaches the model
   });
 });

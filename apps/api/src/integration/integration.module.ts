@@ -5,6 +5,7 @@ import { IntegrationService } from './integration.service';
 import { FlexAuthSession } from './flex/flex-auth-session';
 import { FlexErpAdapter } from './flex/flex-erp.adapter';
 import { ErpToolRegistry } from './erp-tool-registry';
+import { IdentityResolver } from './identity-resolver';
 
 @Module({
   imports: [ConfigModule],
@@ -14,6 +15,7 @@ import { ErpToolRegistry } from './erp-tool-registry';
     FlexErpAdapter,
     // Read-only ERP port — the AI consumes this; write/sync (IntegrationProvider) stays separate.
     { provide: ERP_QUERY_PORT, useExisting: FlexErpAdapter },
+    IdentityResolver,
     ErpToolRegistry,
     // Tool registry exposed via port token so the AI loop depends on the
     // interface, not the concrete class across the module boundary.

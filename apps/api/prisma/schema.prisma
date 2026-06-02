@@ -147,3 +147,16 @@ model MemoryEmbedding {
   @@index([phone])
   @@map("memory_embeddings")
 }
+
+// Vínculo verificado telefone WhatsApp → Cliente Flex (cdCliente).
+// Criado só após CPF/CNPJ + telefone baterem com o cadastro (anti-impersonação).
+model IdentityBinding {
+  id        String   @id @default(uuid())
+  phone     String   @unique
+  cdCliente Int      @map("cd_cliente")
+  verified  Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("identity_bindings")
+}

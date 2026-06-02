@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ErpQueryPort, ProductSummary } from '@motor100/shared';
+import { CustomerSummary, ErpQueryPort, ProductSummary } from '@motor100/shared';
 import axios from 'axios';
 import { FlexAuthSession } from './flex-auth-session';
 
@@ -33,6 +33,25 @@ export class FlexErpAdapter implements ErpQueryPort {
     const ids = await this.searchProductIds(query);
     if (ids.length === 0) return [];
     return this.getProductsByIds(ids, cdFilial);
+  }
+
+  async getCustomerByDocument(cpfCnpj: string): Promise<CustomerSummary | null> {
+    const params = new URLSearchParams({ cpfCnpj });
+    const data = await this.authedGet(
+      `${this.baseUrl}/Cliente/getByCpfCnpj?${params.toString()}`,
+    );
+    if (!data || typeof data !== 'object' || (data as any).cdCliente == null) {
+      return null;
+    }
+    const c = data as any;
+    const telefones = [c.fone, c.fone2, c.celular]
+      .filter((t): t is string => typeof t === 'string' && t.trim() !== '');
+    return {
+      cdCliente: c.cdCliente,
+      nome: c.nmCliente ?? '',
+      telefones,
+      vendedorId: c.cdVendedor ?? null,
+    };
   }
 
   /** Hop 1: free-text search → list of idItem. Vehicle/ficha flags must be true. */

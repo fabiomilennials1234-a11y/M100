@@ -7,7 +7,8 @@
 /** Per-conversation context passed to every tool dispatch. */
 export interface ToolContext {
   cdFilial: number;
-  // cdCliente arrives with identity resolution (later slice).
+  /** WhatsApp phone of the customer — used for identity binding/lookup. */
+  phone: string;
 }
 
 /** OpenRouter-shaped function tool definition. */
