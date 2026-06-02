@@ -15,7 +15,7 @@ export class MessageWorker extends WorkerHost {
     super();
   }
 
-  async process(job: Job<{ phone: string; content: string }>) {
+  async process(job: Job<{ phone: string; content: string; instanceId: string }>) {
     this.logger.log(`Processing job ${job.id} for ${job.data.phone}`);
     await this.processorService.processJob(job);
   }

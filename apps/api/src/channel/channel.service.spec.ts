@@ -1,60 +1,72 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { ChannelService } from './channel.service';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import { ChannelService } from './channel.service';
+import { CryptoService } from '../crypto/crypto.service';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
+const VALID_KEY = '0'.repeat(64);
+
+function setup() {
+  const crypto = new CryptoService({
+    get: () => VALID_KEY,
+  } as unknown as ConfigService);
+
+  const prisma = {
+    channelInstance: { findUnique: jest.fn() },
+  };
+
+  const service = new ChannelService(prisma as any, crypto);
+  return { service, prisma, crypto };
+}
+
 describe('ChannelService', () => {
-  let service: ChannelService;
+  afterEach(() => jest.clearAllMocks());
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        ChannelService,
-        {
-          provide: ConfigService,
-          useValue: {
-            get: jest.fn((key: string) => {
-              const config: Record<string, string> = {
-                UAZAPI_BASE_URL: 'https://api.uazapi.com',
-                UAZAPI_TOKEN: 'test-token-123',
-              };
-              return config[key];
-            }),
-          },
-        },
-      ],
-    }).compile();
-
-    service = module.get(ChannelService);
-  });
-
-  it('sends text message via UAZAPI API', async () => {
-    mockedAxios.post.mockResolvedValueOnce({
-      data: { key: { id: 'ext-msg-001' } },
+  it('resolves the instance credentials from the DB and sends via its server', async () => {
+    const { service, prisma, crypto } = setup();
+    prisma.channelInstance.findUnique.mockResolvedValue({
+      id: 'inst-1',
+      serverUrl: 'https://srv.uazapi.com/i/abc',
+      instanceToken: crypto.encrypt('real-instance-token'),
     });
+    mockedAxios.post.mockResolvedValue({ data: { key: { id: 'ext-1' } } });
 
-    const result = await service.send({
-      to: '+5511999990000',
-      content: 'Olá! Como posso ajudar?',
-      type: 'text',
-    });
+    const result = await service.send(
+      { to: '+5511999990000', content: 'Olá', type: 'text' },
+      'inst-1',
+    );
 
     expect(mockedAxios.post).toHaveBeenCalledWith(
-      'https://api.uazapi.com/sendText',
-      { phone: '+5511999990000', message: 'Olá! Como posso ajudar?' },
-      { headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-token-123' } },
+      'https://srv.uazapi.com/i/abc/sendText',
+      { phone: '+5511999990000', message: 'Olá' },
+      { headers: { token: 'real-instance-token' } },
     );
-    expect(result.externalId).toBe('ext-msg-001');
+    expect(result.externalId).toBe('ext-1');
   });
 
-  it('throws on UAZAPI API failure', async () => {
-    mockedAxios.post.mockRejectedValueOnce(new Error('Network error'));
+  it('caches decrypted credentials so repeated sends do not hit the DB each time', async () => {
+    const { service, prisma, crypto } = setup();
+    prisma.channelInstance.findUnique.mockResolvedValue({
+      id: 'inst-1',
+      serverUrl: 'https://srv.uazapi.com',
+      instanceToken: crypto.encrypt('tok'),
+    });
+    mockedAxios.post.mockResolvedValue({ data: { key: { id: 'x' } } });
+
+    await service.send({ to: '+551', content: 'a', type: 'text' }, 'inst-1');
+    await service.send({ to: '+551', content: 'b', type: 'text' }, 'inst-1');
+
+    expect(prisma.channelInstance.findUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws when the instance does not exist', async () => {
+    const { service, prisma } = setup();
+    prisma.channelInstance.findUnique.mockResolvedValue(null);
 
     await expect(
-      service.send({ to: '+5511999990000', content: 'test', type: 'text' }),
-    ).rejects.toThrow('Network error');
+      service.send({ to: '+551', content: 'a', type: 'text' }, 'ghost'),
+    ).rejects.toThrow(/not found/i);
   });
 });

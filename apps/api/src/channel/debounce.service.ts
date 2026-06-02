@@ -4,6 +4,7 @@ import { DomainEvent } from '@motor100/shared';
 
 interface DebounceBuffer {
   messages: string[];
+  instanceId: string;
   timer: NodeJS.Timeout;
 }
 
@@ -16,16 +17,18 @@ export class DebounceService {
     this.timeoutMs = parseInt(process.env.DEBOUNCE_TIMEOUT_MS ?? '3000', 10);
   }
 
-  debounce(phone: string, content: string): void {
+  debounce(phone: string, content: string, instanceId: string): void {
     const existing = this.buffers.get(phone);
 
     if (existing) {
       clearTimeout(existing.timer);
       existing.messages.push(content);
+      existing.instanceId = instanceId;
       existing.timer = this.createTimer(phone);
     } else {
       this.buffers.set(phone, {
         messages: [content],
+        instanceId,
         timer: this.createTimer(phone),
       });
     }
@@ -47,8 +50,13 @@ export class DebounceService {
     if (!buffer) return;
 
     const content = buffer.messages.join('\n');
+    const { instanceId } = buffer;
     this.buffers.delete(phone);
 
-    this.events.emit(DomainEvent.DEBOUNCE_FLUSHED, { phone, content });
+    this.events.emit(DomainEvent.DEBOUNCE_FLUSHED, {
+      phone,
+      content,
+      instanceId,
+    });
   }
 }

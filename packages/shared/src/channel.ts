@@ -16,7 +16,10 @@ export interface OutboundMessage {
 }
 
 export interface ChannelSender {
-  send(message: OutboundMessage): Promise<{ externalId: string }>;
+  send(
+    message: OutboundMessage,
+    instanceId: string,
+  ): Promise<{ externalId: string }>;
 }
 
 export interface ChannelReceiver {

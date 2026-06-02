@@ -16,7 +16,7 @@ describe('ApiController', () => {
         { id: 'conv-1', externalPhone: '+5511999990000', status: 'na_fila', ownerType: 'queue' },
       ]),
       findById: jest.fn().mockResolvedValue({
-        id: 'conv-1', externalPhone: '+5511999990000', status: 'atendida_humano',
+        id: 'conv-1', externalPhone: '+5511999990000', instanceId: 'inst-1', status: 'atendida_humano',
         progressiveSummary: 'Resumo progressivo', finalSummary: null,
       }),
       getMessages: jest.fn().mockResolvedValue([
@@ -93,6 +93,7 @@ describe('ApiController', () => {
         to: '+5511999990000',
         content: 'Olá cliente',
       }),
+      'inst-1',
     );
   });
 

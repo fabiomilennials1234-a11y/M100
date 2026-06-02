@@ -88,11 +88,11 @@ describe('MessageProcessorService', () => {
   afterEach(() => jest.clearAllMocks());
 
   it('enqueues job on debounce.flushed event', async () => {
-    await service.handleDebounceFlushed({ phone: '+5511999990000', content: 'Oi' });
+    await service.handleDebounceFlushed({ phone: '+5511999990000', content: 'Oi', instanceId: 'inst-1' });
 
     expect(mockQueue.add).toHaveBeenCalledWith(
       'process-message',
-      { phone: '+5511999990000', content: 'Oi', timestamp: expect.any(Number) },
+      { phone: '+5511999990000', content: 'Oi', instanceId: 'inst-1', timestamp: expect.any(Number) },
       expect.objectContaining({
         attempts: 3,
         backoff: { type: 'exponential', delay: 1000 },
@@ -102,20 +102,23 @@ describe('MessageProcessorService', () => {
 
   it('processes job: conversation → AI → channel send on respond', async () => {
     const job = {
-      data: { phone: '+5511999990000', content: 'Qual prazo?' },
+      data: { phone: '+5511999990000', content: 'Qual prazo?', instanceId: 'inst-1' },
     };
 
     await service.processJob(job as any);
 
     expect(conversationService.handleInboundMessage).toHaveBeenCalledWith(
-      '+5511999990000', 'clean text', 'text',
+      '+5511999990000', 'clean text', 'text', 'inst-1',
     );
     expect(aiService.processMessage).toHaveBeenCalledWith('conv-1');
-    expect(channelService.send).toHaveBeenCalledWith({
-      to: '+5511999990000',
-      content: 'Prazo é 3-5 dias.',
-      type: 'text',
-    });
+    expect(channelService.send).toHaveBeenCalledWith(
+      {
+        to: '+5511999990000',
+        content: 'Prazo é 3-5 dias.',
+        type: 'text',
+      },
+      'inst-1',
+    );
   });
 
   it('calls requestHandoff when AI returns handoff', async () => {
@@ -189,11 +192,11 @@ describe('MessageProcessorService', () => {
         flags: ['cpf_redacted'],
       });
 
-      const job = { data: { phone: '+5511999990000', content: 'Meu CPF é 123.456.789-00' } };
+      const job = { data: { phone: '+5511999990000', content: 'Meu CPF é 123.456.789-00', instanceId: 'inst-1' } };
       await service.processJob(job as any);
 
       expect(conversationService.handleInboundMessage).toHaveBeenCalledWith(
-        '+5511999990000', 'Meu CPF é [CPF_REDACTED]', 'text',
+        '+5511999990000', 'Meu CPF é [CPF_REDACTED]', 'text', 'inst-1',
       );
     });
 

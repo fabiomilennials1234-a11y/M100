@@ -4,10 +4,11 @@ import { ChannelService } from './channel.service';
 import { ChannelController } from './channel.controller';
 import { DebounceService } from './debounce.service';
 import { RateLimitGuard, REDIS_CLIENT } from './rate-limit.guard';
+import { PrismaModule } from '../prisma';
 import Redis from 'ioredis';
 
 @Module({
-  imports: [ConfigModule],
+  imports: [ConfigModule, PrismaModule],
   controllers: [ChannelController],
   providers: [
     ChannelService,

@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Body,
+  Param,
   Headers,
   Logger,
   UnauthorizedException,
@@ -10,21 +11,28 @@ import {
 } from '@nestjs/common';
 import { DebounceService } from './debounce.service';
 import { RateLimitGuard } from './rate-limit.guard';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('webhook')
 export class ChannelController {
   private readonly logger = new Logger(ChannelController.name);
 
-  constructor(private readonly debounceService: DebounceService) {}
+  constructor(
+    private readonly debounceService: DebounceService,
+    private readonly prisma: PrismaService,
+  ) {}
 
-  @Post('uazapi')
+  @Post('uazapi/:instanceId')
   @UseGuards(RateLimitGuard)
   async handleUazapiWebhook(
+    @Param('instanceId') instanceId: string,
     @Body() body: any,
     @Headers('x-webhook-secret') secret?: string,
   ) {
-    const expectedSecret = process.env.UAZAPI_WEBHOOK_SECRET;
-    if (expectedSecret && secret !== expectedSecret) {
+    const instance = await this.prisma.channelInstance.findUnique({
+      where: { id: instanceId },
+    });
+    if (!instance || secret !== instance.webhookSecret) {
       throw new UnauthorizedException('Invalid webhook secret');
     }
 
@@ -51,7 +59,7 @@ export class ChannelController {
       return { received: true };
     }
 
-    this.debounceService.debounce(phone, content);
+    this.debounceService.debounce(phone, content, instanceId);
 
     return { received: true };
   }

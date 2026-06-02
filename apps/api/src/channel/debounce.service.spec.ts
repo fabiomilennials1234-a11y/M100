@@ -29,13 +29,14 @@ describe('DebounceService', () => {
   it('flushes single message after timeout', async () => {
     jest.useFakeTimers();
 
-    service.debounce('+5511999990000', 'oi');
+    service.debounce('+5511999990000', 'oi', 'inst-1');
 
     jest.advanceTimersByTime(3000);
 
     expect(events.emit).toHaveBeenCalledWith(DomainEvent.DEBOUNCE_FLUSHED, {
       phone: '+5511999990000',
       content: 'oi',
+      instanceId: 'inst-1',
     });
 
     jest.useRealTimers();
@@ -44,11 +45,11 @@ describe('DebounceService', () => {
   it('concatenates rapid messages from same phone', () => {
     jest.useFakeTimers();
 
-    service.debounce('+5511999990000', 'oi');
+    service.debounce('+5511999990000', 'oi', 'inst-1');
     jest.advanceTimersByTime(500);
-    service.debounce('+5511999990000', 'tudo bem?');
+    service.debounce('+5511999990000', 'tudo bem?', 'inst-1');
     jest.advanceTimersByTime(500);
-    service.debounce('+5511999990000', 'preciso de ajuda');
+    service.debounce('+5511999990000', 'preciso de ajuda', 'inst-1');
 
     jest.advanceTimersByTime(3000);
 
@@ -56,6 +57,7 @@ describe('DebounceService', () => {
     expect(events.emit).toHaveBeenCalledWith(DomainEvent.DEBOUNCE_FLUSHED, {
       phone: '+5511999990000',
       content: 'oi\ntudo bem?\npreciso de ajuda',
+      instanceId: 'inst-1',
     });
 
     jest.useRealTimers();
@@ -64,8 +66,8 @@ describe('DebounceService', () => {
   it('keeps independent buffers per phone', () => {
     jest.useFakeTimers();
 
-    service.debounce('+5511111111111', 'msg phone 1');
-    service.debounce('+5522222222222', 'msg phone 2');
+    service.debounce('+5511111111111', 'msg phone 1', 'inst-1');
+    service.debounce('+5522222222222', 'msg phone 2', 'inst-2');
 
     jest.advanceTimersByTime(3000);
 
@@ -73,10 +75,12 @@ describe('DebounceService', () => {
     expect(events.emit).toHaveBeenCalledWith(DomainEvent.DEBOUNCE_FLUSHED, {
       phone: '+5511111111111',
       content: 'msg phone 1',
+      instanceId: 'inst-1',
     });
     expect(events.emit).toHaveBeenCalledWith(DomainEvent.DEBOUNCE_FLUSHED, {
       phone: '+5522222222222',
       content: 'msg phone 2',
+      instanceId: 'inst-2',
     });
 
     jest.useRealTimers();
@@ -85,10 +89,10 @@ describe('DebounceService', () => {
   it('resets timer on each new message', () => {
     jest.useFakeTimers();
 
-    service.debounce('+5511999990000', 'oi');
+    service.debounce('+5511999990000', 'oi', 'inst-1');
     jest.advanceTimersByTime(2500);
 
-    service.debounce('+5511999990000', 'mais uma');
+    service.debounce('+5511999990000', 'mais uma', 'inst-1');
     jest.advanceTimersByTime(2500);
 
     expect(events.emit).not.toHaveBeenCalled();
@@ -99,6 +103,7 @@ describe('DebounceService', () => {
     expect(events.emit).toHaveBeenCalledWith(DomainEvent.DEBOUNCE_FLUSHED, {
       phone: '+5511999990000',
       content: 'oi\nmais uma',
+      instanceId: 'inst-1',
     });
 
     jest.useRealTimers();
@@ -107,8 +112,8 @@ describe('DebounceService', () => {
   it('clearAll cancels all pending timers', () => {
     jest.useFakeTimers();
 
-    service.debounce('+5511111111111', 'msg 1');
-    service.debounce('+5522222222222', 'msg 2');
+    service.debounce('+5511111111111', 'msg 1', 'inst-1');
+    service.debounce('+5522222222222', 'msg 2', 'inst-2');
 
     service.clearAll();
 

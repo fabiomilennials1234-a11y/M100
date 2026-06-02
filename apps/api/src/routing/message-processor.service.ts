@@ -32,12 +32,17 @@ export class MessageProcessorService {
   ) {}
 
   @OnEvent(DomainEvent.DEBOUNCE_FLUSHED)
-  async handleDebounceFlushed(payload: { phone: string; content: string }) {
+  async handleDebounceFlushed(payload: {
+    phone: string;
+    content: string;
+    instanceId: string;
+  }) {
     await this.queue.add(
       'process-message',
       {
         phone: payload.phone,
         content: payload.content,
+        instanceId: payload.instanceId,
         timestamp: Date.now(),
       },
       {
@@ -49,8 +54,10 @@ export class MessageProcessorService {
     );
   }
 
-  async processJob(job: Job<{ phone: string; content: string }>) {
-    const { phone, content } = job.data;
+  async processJob(
+    job: Job<{ phone: string; content: string; instanceId: string }>,
+  ) {
+    const { phone, content, instanceId } = job.data;
     const trace = this.tracing.startTrace(`job-${job.id}`, { phone });
 
     try {
@@ -64,7 +71,7 @@ export class MessageProcessorService {
 
       const spanConversation = trace.startSpan('conversation.handleInbound');
       const { conversation } = await this.conversation.handleInboundMessage(
-        phone, sanitized.sanitized, 'text',
+        phone, sanitized.sanitized, 'text', instanceId,
       );
       spanConversation.end({ conversationId: conversation.id, status: conversation.status });
 
@@ -105,11 +112,14 @@ export class MessageProcessorService {
         }
 
         const spanSend = trace.startSpan('channel.send');
-        await this.channel.send({
-          to: phone,
-          content: decision.message,
-          type: 'text',
-        });
+        await this.channel.send(
+          {
+            to: phone,
+            content: decision.message,
+            type: 'text',
+          },
+          instanceId,
+        );
         spanSend.end({ sent: true });
       } else if (decision.action === AIAction.HANDOFF) {
         const spanHandoff = trace.startSpan('conversation.handoff');

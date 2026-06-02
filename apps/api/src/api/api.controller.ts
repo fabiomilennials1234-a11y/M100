@@ -55,11 +55,14 @@ export class ApiController {
   ) {
     const message = await this.conversation.handleOutboundMessage(id, body.content, 'agent');
     const conversation = await this.conversation.findById(id);
-    await this.channel.send({
-      to: conversation!.externalPhone,
-      content: body.content,
-      type: 'text',
-    });
+    await this.channel.send(
+      {
+        to: conversation!.externalPhone,
+        content: body.content,
+        type: 'text',
+      },
+      conversation!.instanceId,
+    );
     return message;
   }
 
