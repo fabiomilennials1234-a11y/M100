@@ -23,6 +23,13 @@ export interface OrderSummary {
   total: number;
 }
 
+/** Price of an item; personalizado=true when computed for an identified customer. */
+export interface PriceInfo {
+  idItem: number;
+  preco: number;
+  personalizado: boolean;
+}
+
 /** Stock availability for an item in a Filial. */
 export interface StockInfo {
   idItem: number;
@@ -59,4 +66,14 @@ export interface ErpQueryPort {
 
   /** Sales orders for a Cliente Flex (most recent first), with readable status. */
   getOrdersByCustomer(cdCliente: number): Promise<OrderSummary[]>;
+
+  /**
+   * Price of an item in a Filial. With cdCliente, applies the customer's table
+   * and discount policy (personalizado); without it, returns the table price.
+   */
+  getPrice(
+    idItem: number,
+    cdFilial: number,
+    cdCliente?: number,
+  ): Promise<PriceInfo>;
 }

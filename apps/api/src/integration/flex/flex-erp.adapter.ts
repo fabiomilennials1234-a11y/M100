@@ -4,6 +4,7 @@ import {
   CustomerSummary,
   ErpQueryPort,
   OrderSummary,
+  PriceInfo,
   ProductSummary,
   StockInfo,
 } from '@motor100/shared';
@@ -134,6 +135,35 @@ export class FlexErpAdapter implements ErpQueryPort {
       temEstoque: Boolean(r.temEstoque),
       unidadeVenda: r.unMedvenda,
     }));
+  }
+
+  async getPrice(
+    idItem: number,
+    cdFilial: number,
+    cdCliente?: number,
+  ): Promise<PriceInfo> {
+    const params = new URLSearchParams({
+      filial: String(cdFilial),
+      idItem: String(idItem),
+      // Flex gotcha: getPrecoItem expects the date in MM/DD/YYYY.
+      data: this.todayMMDDYYYY(),
+    });
+    if (cdCliente != null) {
+      params.set('cdCliente', String(cdCliente));
+    }
+    const data = await this.authedGet(
+      `${this.baseUrl}/PrecoProduto/getPrecoItem?${params.toString()}`,
+    );
+    const row = Array.isArray(data) ? data[0] : data;
+    const preco = Number((row as any)?.preco ?? 0) || 0;
+    return { idItem, preco, personalizado: cdCliente != null };
+  }
+
+  private todayMMDDYYYY(): string {
+    const d = new Date();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${mm}/${dd}/${d.getFullYear()}`;
   }
 
   private extractIds(data: unknown): number[] {
