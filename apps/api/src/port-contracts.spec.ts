@@ -7,6 +7,7 @@ import { GuardrailService } from './guardrail/guardrail.service';
 import { AiService } from './ai/ai.service';
 import { ChannelService } from './channel/channel.service';
 import { IntegrationService } from './integration/integration.service';
+import { FlexErpAdapter } from './integration/flex/flex-erp.adapter';
 import type {
   MemoryPort,
   SummaryPort,
@@ -15,6 +16,7 @@ import type {
   AIProvider,
   ChannelSender,
   IntegrationProvider,
+  ErpQueryPort,
 } from '@motor100/shared';
 
 type AssertImplements<T, U extends T> = U;
@@ -114,6 +116,16 @@ describe('Port contracts — compile-time + runtime', () => {
 
     it.each(methods)('%s exists on IntegrationService prototype', (method) => {
       expect(typeof IntegrationService.prototype[method]).toBe('function');
+    });
+  });
+
+  describe('ErpQueryPort', () => {
+    type _check = AssertImplements<ErpQueryPort, FlexErpAdapter>;
+
+    const methods: (keyof ErpQueryPort)[] = ['searchProducts'];
+
+    it.each(methods)('%s exists on FlexErpAdapter prototype', (method) => {
+      expect(typeof FlexErpAdapter.prototype[method]).toBe('function');
     });
   });
 });

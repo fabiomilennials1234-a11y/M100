@@ -20,3 +20,13 @@
 
 - **OwnerType** — Enum que define quem detém uma conversa: `ai`, `agent`, `queue`, `none`.
 - **Lock Otimista** — Mecanismo de concorrência via campo `version` no Postgres. `UPDATE WHERE version = X` garante que duas transições simultâneas não corrompam estado.
+
+## Integration / ERP Domain
+
+- **ERP Flex Smart (FlexWeb)** — Sistema de gestão externo (autopeças) que o Motor100 consulta em modo **read-only** durante o atendimento. A IA o consulta para responder sobre produtos, preços, estoque e pedidos. Escrita no ERP e consulta de crédito (Serasa) estão fora do alcance da IA.
+- **Filial** — Unidade de negócio no ERP Flex. Toda consulta de produto, preço e estoque é vinculada a uma Filial. Cada Instância de Canal atende exatamente uma Filial.
+- **Cliente Flex** — Cliente cadastrado no ERP, identificado por `cdCliente`. Distinto do contato de WhatsApp: o telefone é ligado a um Cliente Flex apenas após o cliente informar CPF/CNPJ **e** o telefone bater com o cadastro no Flex. Sem esse vínculo verificado, a IA só responde consultas genéricas (não expõe pedidos nem preço personalizado).
+- **Vínculo de Identidade** — Associação verificada entre um telefone WhatsApp e um Cliente Flex, persistida no Motor100. Pré-requisito para consultas específicas do cliente (pedidos, preço com desconto).
+- **Pedido de Venda** — Pedido do cliente no ERP, consultável por Cliente Flex. Possui uma Situação.
+- **Situação do Pedido** — Estado de um Pedido de Venda (ex.: "Em digitação", "Aguardando estoque").
+- **Vendedor** — Vendedor cadastrado no ERP, podendo estar vinculado a um Cliente Flex; o vínculo influencia o roteamento para atendimento humano.

@@ -95,6 +95,7 @@ model ChannelInstance {
   instanceToken String   @map("instance_token") // AES-256-GCM encrypted via CryptoService
   webhookSecret String   @map("webhook_secret")
   status        String   @default("disconnected")
+  cdFilial      Int      @default(1) @map("cd_filial") // Filial do ERP Flex atendida por este número
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
