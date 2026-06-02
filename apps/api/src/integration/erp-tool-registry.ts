@@ -63,7 +63,7 @@ export class ErpToolRegistry implements ToolRegistry {
         function: {
           name: 'get_product_price',
           description:
-            'Consulta o preço de um produto pelo idItem (obtido via get_product_info). Se o cliente já foi identificado, o preço considera a tabela e o desconto dele; caso contrário, retorna o preço de tabela.',
+            'Consulta o preço de um produto pelo idItem (obtido via get_product_info). Se o cliente já foi identificado nesta conversa (via identify_customer), o preço considera a tabela e o desconto dele (resolvidos internamente pelo telefone, não por parâmetro); caso contrário, retorna o preço de tabela.',
           parameters: {
             type: 'object',
             properties: {

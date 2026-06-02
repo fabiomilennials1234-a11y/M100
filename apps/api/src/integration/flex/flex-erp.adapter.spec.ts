@@ -329,11 +329,28 @@ describe('FlexErpAdapter.getPrice', () => {
     expect(price).toEqual({ idItem: 691171, preco: 25.0, personalizado: true });
   });
 
-  it('defaults price to zero on an empty/non-array body', async () => {
-    const { adapter } = setup();
-    mockedAxios.get.mockResolvedValueOnce({ data: [] });
+  it.each([{ data: [] }, { data: null }, { data: {} }, { data: undefined }])(
+    'defaults price to zero on body %j',
+    async (body) => {
+      const { adapter } = setup();
+      mockedAxios.get.mockResolvedValueOnce(body);
 
-    expect(await adapter.getPrice(1, 1)).toEqual({ idItem: 1, preco: 0, personalizado: false });
+      expect(await adapter.getPrice(1, 1)).toEqual({ idItem: 1, preco: 0, personalizado: false });
+    },
+  );
+
+  it('sends the date in MM/DD/YYYY anchored to BRT (off-by-one safe)', async () => {
+    jest.useFakeTimers();
+    // 2026-06-02 01:00 UTC → still 2026-06-01 22:00 in São Paulo (UTC-3).
+    jest.setSystemTime(new Date('2026-06-02T01:00:00Z'));
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({ data: [{ preco: 10 }] });
+
+    await adapter.getPrice(1, 1);
+
+    const url = decodeURIComponent(mockedAxios.get.mock.calls[0][0] as string);
+    expect(url).toContain('data=06/01/2026'); // BRT date, not UTC's 06/02
+    jest.useRealTimers();
   });
 
   it.each([

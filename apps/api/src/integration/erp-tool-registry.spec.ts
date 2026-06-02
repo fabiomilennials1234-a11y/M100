@@ -128,6 +128,21 @@ describe('ErpToolRegistry', () => {
     expect(erp.getPrice).toHaveBeenCalledWith(691171, 1, 40491);
   });
 
+  it.each([
+    [{ idItem: 691171 }, 691171],
+    [{ idItem: '691171' }, 691171],
+    [{}, 0],
+    [{ idItem: null }, 0],
+  ])('coerces get_product_price idItem %j to number %j', async (args, expected) => {
+    const { registry, erp, identity } = setup();
+    (identity.getBinding as jest.Mock).mockResolvedValue(null);
+    erp.getPrice.mockResolvedValue({ idItem: expected, preco: 0, personalizado: false });
+
+    await registry.dispatch('get_product_price', args as any, { ...CTX, cdFilial: 2 });
+
+    expect(erp.getPrice).toHaveBeenCalledWith(expected, 2, undefined);
+  });
+
   it('refuses check_order_status when the customer is not identified', async () => {
     const { registry, erp, identity } = setup();
     (identity.getBinding as jest.Mock).mockResolvedValue(null);

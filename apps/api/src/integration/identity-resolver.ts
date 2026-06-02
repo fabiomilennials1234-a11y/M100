@@ -67,7 +67,12 @@ export class IdentityResolver {
         await this.prisma.identityBinding.create({
           data: { phone, cdCliente: customer.cdCliente, verified: true },
         });
-      } catch {
+      } catch (e: any) {
+        // Only swallow the unique-constraint violation (concurrent create race).
+        // Transient/real errors must NOT be reported as a verified binding.
+        if (e?.code !== 'P2002') {
+          throw e;
+        }
         // Lost a concurrent create race — re-read and treat a different
         // cliente as a conflict rather than overwriting.
         const now = await this.prisma.identityBinding.findUnique({ where: { phone } });
