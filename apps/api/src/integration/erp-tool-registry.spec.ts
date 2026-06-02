@@ -129,6 +129,18 @@ describe('ErpToolRegistry', () => {
     expect(result).toEqual({ pedidos: [{ nrPedido: 95, situacao: 'EM DIGITACAO', emissao: '2021-12-22', total: 246.92 }] });
   });
 
+  it('ignores a model-supplied cdCliente and always uses the verified binding', async () => {
+    const { registry, erp, identity } = setup();
+    (identity.getBinding as jest.Mock).mockResolvedValue({ cdCliente: 1448 });
+    erp.getOrdersByCustomer.mockResolvedValue([]);
+
+    // Model tries to inject someone else's cdCliente — must be ignored.
+    await registry.dispatch('check_order_status', { cdCliente: 9999 }, CTX);
+
+    expect(erp.getOrdersByCustomer).toHaveBeenCalledWith(1448);
+    expect(erp.getOrdersByCustomer).not.toHaveBeenCalledWith(9999);
+  });
+
   it('exposes identify_customer with a document param', () => {
     const { registry } = setup();
     const tool = registry.definitions().find((d) => d.function.name === 'identify_customer');

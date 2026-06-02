@@ -86,7 +86,9 @@ export class FlexErpAdapter implements ErpQueryPort {
     const rows: any[] = Array.isArray(data) ? data : [];
     return rows.map((r) => ({
       nrPedido: r.nrPedido,
-      situacao: r.nmSituacao ?? `Situação ${r.cdSituacao}`,
+      situacao:
+        r.nmSituacao ??
+        (r.cdSituacao != null ? `Situação ${r.cdSituacao}` : 'Situação desconhecida'),
       emissao: r.dtEmissao ?? null,
       total: Number(r.vlTotal ?? 0) || 0,
     }));

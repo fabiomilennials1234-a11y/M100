@@ -261,8 +261,34 @@ describe('FlexErpAdapter.getOrdersByCustomer', () => {
     });
 
     const orders = await adapter.getOrdersByCustomer(1);
-    expect(orders[0].situacao).toContain('14');
+    expect(orders[0].situacao).toBe('Situação 14');
     expect(orders[0].emissao).toBeNull();
+  });
+
+  it('does not render "undefined" when both situation fields are missing', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({ data: [{ nrPedido: 1, vlTotal: 10 }] });
+
+    const orders = await adapter.getOrdersByCustomer(1);
+    expect(orders[0].situacao).toBe('Situação desconhecida');
+    expect(orders[0].situacao).not.toContain('undefined');
+  });
+
+  it.each([
+    [246.92, 246.92],
+    ['246.92', 246.92],
+    ['', 0],
+    [null, 0],
+    [undefined, 0],
+    ['abc', 0],
+  ])('coerces vlTotal %j to the number %j', async (input, expected) => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({
+      data: [{ nrPedido: 1, nmSituacao: 'OK', dtEmissao: null, vlTotal: input }],
+    });
+
+    const orders = await adapter.getOrdersByCustomer(1);
+    expect(orders[0].total).toBe(expected);
   });
 
   it('returns empty for a non-array body (defensive)', async () => {
