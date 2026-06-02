@@ -18,6 +18,12 @@ export class UpdateAvailabilityDto {
   availability!: AgentAvailability;
 }
 
+export class CreateInstanceDto {
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+}
+
 export class ConversationFilterDto {
   @IsOptional()
   @IsEnum(ConversationStatus)
