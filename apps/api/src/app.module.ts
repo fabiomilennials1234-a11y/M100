@@ -4,6 +4,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { BullModule } from '@nestjs/bullmq';
 import { PrismaModule } from './prisma';
 import { CryptoModule } from './crypto';
+import { InstanceModule } from './instance';
 import { TracingModule } from './tracing';
 import { ConversationModule } from './conversation';
 import { RoutingModule } from './routing';
@@ -29,6 +30,7 @@ import { ApiModule } from './api';
     }),
     PrismaModule,
     CryptoModule,
+    InstanceModule,
     TracingModule,
     ConversationModule,
     RoutingModule,

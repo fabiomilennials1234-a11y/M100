@@ -13,3 +13,4 @@ export * from './summary.port';
 export * from './memory.port';
 export * from './routing.port';
 export * from './realtime.port';
+export * from './instance.port';
