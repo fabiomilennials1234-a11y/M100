@@ -298,3 +298,70 @@ describe('FlexErpAdapter.getOrdersByCustomer', () => {
     expect(await adapter.getOrdersByCustomer(1)).toEqual([]);
   });
 });
+
+describe('FlexErpAdapter.getPrice', () => {
+  afterEach(() => jest.clearAllMocks());
+
+  it('returns the generic table price when no customer is given', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({ data: [{ cdTabelaPreco: 1, preco: 141.96 }] });
+
+    const price = await adapter.getPrice(691171, 1);
+
+    const url = mockedAxios.get.mock.calls[0][0] as string;
+    expect(url).toContain('/PrecoProduto/getPrecoItem');
+    expect(url).toContain('idItem=691171');
+    expect(url).toContain('filial=1');
+    expect(url).not.toContain('cdCliente=');
+    // data sent as MM/DD/YYYY (Flex gotcha) — URL-encoded slashes
+    expect(decodeURIComponent(url)).toMatch(/data=\d{2}\/\d{2}\/\d{4}/);
+    expect(price).toEqual({ idItem: 691171, preco: 141.96, personalizado: false });
+  });
+
+  it('applies the customer discount policy when cdCliente is given', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({ data: [{ cdTabelaPreco: 5, preco: 25.0 }] });
+
+    const price = await adapter.getPrice(691171, 1, 40491);
+
+    const url = mockedAxios.get.mock.calls[0][0] as string;
+    expect(url).toContain('cdCliente=40491');
+    expect(price).toEqual({ idItem: 691171, preco: 25.0, personalizado: true });
+  });
+
+  it.each([{ data: [] }, { data: null }, { data: {} }, { data: undefined }])(
+    'defaults price to zero on body %j',
+    async (body) => {
+      const { adapter } = setup();
+      mockedAxios.get.mockResolvedValueOnce(body);
+
+      expect(await adapter.getPrice(1, 1)).toEqual({ idItem: 1, preco: 0, personalizado: false });
+    },
+  );
+
+  it('sends the date in MM/DD/YYYY anchored to BRT (off-by-one safe)', async () => {
+    jest.useFakeTimers();
+    // 2026-06-02 01:00 UTC → still 2026-06-01 22:00 in São Paulo (UTC-3).
+    jest.setSystemTime(new Date('2026-06-02T01:00:00Z'));
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({ data: [{ preco: 10 }] });
+
+    await adapter.getPrice(1, 1);
+
+    const url = decodeURIComponent(mockedAxios.get.mock.calls[0][0] as string);
+    expect(url).toContain('data=06/01/2026'); // BRT date, not UTC's 06/02
+    jest.useRealTimers();
+  });
+
+  it.each([
+    [25.0, 25.0],
+    ['25.00', 25.0],
+    [null, 0],
+    ['xx', 0],
+  ])('coerces preco %j to number %j', async (input, expected) => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({ data: [{ preco: input }] });
+
+    expect((await adapter.getPrice(1, 1)).preco).toBe(expected);
+  });
+});

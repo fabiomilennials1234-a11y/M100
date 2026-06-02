@@ -61,6 +61,21 @@ export class ErpToolRegistry implements ToolRegistry {
       {
         type: 'function',
         function: {
+          name: 'get_product_price',
+          description:
+            'Consulta o preço de um produto pelo idItem (obtido via get_product_info). Se o cliente já foi identificado nesta conversa (via identify_customer), o preço considera a tabela e o desconto dele (resolvidos internamente pelo telefone, não por parâmetro); caso contrário, retorna o preço de tabela.',
+          parameters: {
+            type: 'object',
+            properties: {
+              idItem: { type: 'number', description: 'idItem retornado por get_product_info.' },
+            },
+            required: ['idItem'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
           name: 'check_order_status',
           description:
             'Consulta os pedidos do cliente e a situação de cada um. Requer que o cliente já tenha sido identificado (identify_customer). Use quando o cliente perguntar sobre o status/andamento de pedidos.',
@@ -107,6 +122,14 @@ export class ErpToolRegistry implements ToolRegistry {
           ctx.cdFilial,
         );
         return stock;
+      }
+      case 'get_product_price': {
+        const binding = await this.identity.getBinding(ctx.phone);
+        return this.erp.getPrice(
+          Number(args.idItem ?? 0),
+          ctx.cdFilial,
+          binding?.cdCliente,
+        );
       }
       case 'check_order_status': {
         const binding = await this.identity.getBinding(ctx.phone);

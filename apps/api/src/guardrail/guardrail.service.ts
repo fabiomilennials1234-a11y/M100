@@ -32,6 +32,7 @@ export class GuardrailService implements GuardrailPort {
     'get_business_hours',
     'identify_customer',
     'check_stock',
+    'get_product_price',
   ]);
 
   private static readonly HITL_TIMEOUT_MS = 30_000;

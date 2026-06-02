@@ -9,10 +9,12 @@ function setup() {
     searchProducts: jest.fn(),
     getStock: jest.fn(),
     getOrdersByCustomer: jest.fn(),
+    getPrice: jest.fn(),
   } as unknown as ErpQueryPort & {
     searchProducts: jest.Mock;
     getStock: jest.Mock;
     getOrdersByCustomer: jest.Mock;
+    getPrice: jest.Mock;
   };
   const identity = {
     resolve: jest.fn(),
@@ -105,6 +107,42 @@ describe('ErpToolRegistry', () => {
     expect(erp.getStock).toHaveBeenCalledWith(expected, 3);
   });
 
+  it('get_product_price uses the table price when the customer is not identified', async () => {
+    const { registry, erp, identity } = setup();
+    (identity.getBinding as jest.Mock).mockResolvedValue(null);
+    erp.getPrice.mockResolvedValue({ idItem: 691171, preco: 141.96, personalizado: false });
+
+    const result = await registry.dispatch('get_product_price', { idItem: 691171 }, { ...CTX, cdFilial: 1 });
+
+    expect(erp.getPrice).toHaveBeenCalledWith(691171, 1, undefined);
+    expect(result).toEqual({ idItem: 691171, preco: 141.96, personalizado: false });
+  });
+
+  it('get_product_price applies the customer discount when identified', async () => {
+    const { registry, erp, identity } = setup();
+    (identity.getBinding as jest.Mock).mockResolvedValue({ cdCliente: 40491 });
+    erp.getPrice.mockResolvedValue({ idItem: 691171, preco: 25.0, personalizado: true });
+
+    await registry.dispatch('get_product_price', { idItem: 691171 }, { ...CTX, cdFilial: 1 });
+
+    expect(erp.getPrice).toHaveBeenCalledWith(691171, 1, 40491);
+  });
+
+  it.each([
+    [{ idItem: 691171 }, 691171],
+    [{ idItem: '691171' }, 691171],
+    [{}, 0],
+    [{ idItem: null }, 0],
+  ])('coerces get_product_price idItem %j to number %j', async (args, expected) => {
+    const { registry, erp, identity } = setup();
+    (identity.getBinding as jest.Mock).mockResolvedValue(null);
+    erp.getPrice.mockResolvedValue({ idItem: expected, preco: 0, personalizado: false });
+
+    await registry.dispatch('get_product_price', args as any, { ...CTX, cdFilial: 2 });
+
+    expect(erp.getPrice).toHaveBeenCalledWith(expected, 2, undefined);
+  });
+
   it('refuses check_order_status when the customer is not identified', async () => {
     const { registry, erp, identity } = setup();
     (identity.getBinding as jest.Mock).mockResolvedValue(null);
@@ -183,7 +221,10 @@ describe('ErpToolRegistry', () => {
     const { registry, erp, identity } = setup();
     erp.searchProducts.mockResolvedValue([]);
     erp.getStock.mockResolvedValue({ idItem: 0, disponivel: false, quantidade: 0 });
+    erp.getPrice.mockResolvedValue({ idItem: 0, preco: 0, personalizado: false });
+    erp.getOrdersByCustomer.mockResolvedValue([]);
     (identity.resolve as jest.Mock).mockResolvedValue({ verified: false, reason: 'not_found' });
+    (identity.getBinding as jest.Mock).mockResolvedValue(null);
 
     for (const def of registry.definitions()) {
       await expect(

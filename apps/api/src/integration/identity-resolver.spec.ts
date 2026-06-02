@@ -117,6 +117,31 @@ describe('IdentityResolver', () => {
     expect(prisma.identityBinding.create).not.toHaveBeenCalled();
   });
 
+  it('does not report verified when create fails with a transient (non-unique) error', async () => {
+    const { resolver, erp, prisma } = setup();
+    erp.getCustomerByDocument.mockResolvedValue(customer);
+    prisma.identityBinding.findUnique.mockResolvedValue(null);
+    prisma.identityBinding.create.mockRejectedValue(
+      Object.assign(new Error('connection lost'), { code: 'P1001' }),
+    );
+
+    await expect(resolver.resolve('+5549999991234', '07100189918')).rejects.toThrow();
+  });
+
+  it('treats a P2002 unique violation by the same cliente as a benign race (verified)', async () => {
+    const { resolver, erp, prisma } = setup();
+    erp.getCustomerByDocument.mockResolvedValue(customer);
+    prisma.identityBinding.findUnique
+      .mockResolvedValueOnce(null) // pre-create check
+      .mockResolvedValueOnce({ phone: '+5549999991234', cdCliente: 8401 }); // post-race re-read
+    prisma.identityBinding.create.mockRejectedValue(
+      Object.assign(new Error('unique'), { code: 'P2002' }),
+    );
+
+    const result = await resolver.resolve('+5549999991234', '07100189918');
+    expect(result.verified).toBe(true);
+  });
+
   it('reports not_found when there is no cadastro for the document', async () => {
     const { resolver, erp, prisma } = setup();
     erp.getCustomerByDocument.mockResolvedValue(null);

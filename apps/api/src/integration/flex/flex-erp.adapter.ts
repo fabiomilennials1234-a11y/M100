@@ -4,6 +4,7 @@ import {
   CustomerSummary,
   ErpQueryPort,
   OrderSummary,
+  PriceInfo,
   ProductSummary,
   StockInfo,
 } from '@motor100/shared';
@@ -134,6 +135,39 @@ export class FlexErpAdapter implements ErpQueryPort {
       temEstoque: Boolean(r.temEstoque),
       unidadeVenda: r.unMedvenda,
     }));
+  }
+
+  async getPrice(
+    idItem: number,
+    cdFilial: number,
+    cdCliente?: number,
+  ): Promise<PriceInfo> {
+    const params = new URLSearchParams({
+      filial: String(cdFilial),
+      idItem: String(idItem),
+      // Flex gotcha: getPrecoItem expects the date in MM/DD/YYYY.
+      data: this.todayMMDDYYYY(),
+    });
+    if (cdCliente != null) {
+      params.set('cdCliente', String(cdCliente));
+    }
+    const data = await this.authedGet(
+      `${this.baseUrl}/PrecoProduto/getPrecoItem?${params.toString()}`,
+    );
+    const row = Array.isArray(data) ? data[0] : data;
+    const preco = Number((row as any)?.preco ?? 0) || 0;
+    return { idItem, preco, personalizado: cdCliente != null };
+  }
+
+  /** Today's date in MM/DD/YYYY, anchored to the business timezone (BRT), not the
+   *  server's — avoids off-by-one near UTC midnight. en-US locale yields MM/DD/YYYY. */
+  private todayMMDDYYYY(): string {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
   }
 
   private extractIds(data: unknown): number[] {
