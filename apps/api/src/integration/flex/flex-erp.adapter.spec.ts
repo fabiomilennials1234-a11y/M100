@@ -52,7 +52,7 @@ describe('FlexErpAdapter.searchProducts', () => {
     expect(detalhadaUrl).toContain('consulta=junta+tampa');
     expect(detalhadaUrl).toContain('considerarInfVeiculo=true');
     expect(detalhadaUrl).toContain('considerarFichaTecnica=true');
-    expect(detalhadaCfg).toEqual({ headers: { authToken: 'TK' } });
+    expect(detalhadaCfg).toEqual({ headers: { authToken: 'TK' }, timeout: expect.any(Number) });
 
     // Hop 2: getByIds with cdFilial + repeated ids params (not CSV)
     const getByIdsUrl = mockedAxios.get.mock.calls[1][0] as string;
@@ -152,7 +152,7 @@ describe('FlexErpAdapter.getCustomerByDocument', () => {
     const [url, cfg] = mockedAxios.get.mock.calls[0];
     expect(url).toContain('/Cliente/getByCpfCnpj');
     expect(url).toContain('cpfCnpj=07100189918');
-    expect(cfg).toEqual({ headers: { authToken: 'TK' } });
+    expect(cfg).toEqual({ headers: { authToken: 'TK' }, timeout: expect.any(Number) });
     expect(customer).toEqual({
       cdCliente: 8401,
       nome: 'Fulano de Tal',
@@ -193,7 +193,7 @@ describe('FlexErpAdapter.getStock', () => {
     expect(url).toContain('/WmsEstoque/consultar');
     expect(url).toContain('item=106');
     expect(url).toContain('cdFilial=2');
-    expect(cfg).toEqual({ headers: { authToken: 'TK' } });
+    expect(cfg).toEqual({ headers: { authToken: 'TK' }, timeout: expect.any(Number) });
     expect(stock).toEqual({ idItem: 106, disponivel: true, quantidade: 5 });
   });
 
@@ -247,7 +247,7 @@ describe('FlexErpAdapter.getOrdersByCustomer', () => {
     expect(url).toContain('cdCliente=1448');
     expect(url).toContain('emAberto=false');
     expect(url).toContain('origem=E');
-    expect(cfg).toEqual({ headers: { authToken: 'TK' } });
+    expect(cfg).toEqual({ headers: { authToken: 'TK' }, timeout: expect.any(Number) });
     expect(orders).toEqual([
       { nrPedido: 95, situacao: 'EM DIGITACAO', emissao: '2021-12-22 00:00:00.0', total: 246.92 },
       { nrPedido: 6896, situacao: 'AGUARDANDO ESTOQUE', emissao: '2021-12-22 00:00:00.0', total: 67.11 },
@@ -363,5 +363,34 @@ describe('FlexErpAdapter.getPrice', () => {
     mockedAxios.get.mockResolvedValueOnce({ data: [{ preco: input }] });
 
     expect((await adapter.getPrice(1, 1)).preco).toBe(expected);
+  });
+});
+
+describe('FlexErpAdapter resilience', () => {
+  afterEach(() => jest.clearAllMocks());
+
+  it('sends a request timeout on ERP calls', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({ data: [] });
+
+    await adapter.searchProducts('x', 1);
+
+    const cfg = mockedAxios.get.mock.calls[0][1] as any;
+    expect(cfg.timeout).toBeGreaterThan(0);
+  });
+
+  it('opens the circuit after repeated ERP failures, then fails fast', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockRejectedValue(new Error('ERP down'));
+
+    // 5 consecutive failures (threshold) trip the breaker.
+    for (let i = 0; i < 5; i++) {
+      await expect(adapter.searchProducts('x', 1)).rejects.toThrow();
+    }
+    mockedAxios.get.mockClear();
+
+    // Circuit open: next call short-circuits without touching the ERP.
+    await expect(adapter.searchProducts('x', 1)).rejects.toThrow();
+    expect(mockedAxios.get).not.toHaveBeenCalled();
   });
 });

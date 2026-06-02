@@ -10,6 +10,12 @@ import {
 } from '@motor100/shared';
 import axios from 'axios';
 import { FlexAuthSession } from './flex-auth-session';
+import { CircuitBreaker } from './circuit-breaker';
+
+/** ERP is on-premise without SLA: bound each call and stop hammering when down. */
+const REQUEST_TIMEOUT_MS = 4000;
+const BREAKER_THRESHOLD = 5;
+const BREAKER_COOLDOWN_MS = 30_000;
 
 /**
  * HTTP adapter over the Flex Smart ERP REST API. ALL Flex idiosyncrasies live
@@ -25,6 +31,10 @@ import { FlexAuthSession } from './flex-auth-session';
 export class FlexErpAdapter implements ErpQueryPort {
   private readonly logger = new Logger(FlexErpAdapter.name);
   private readonly baseUrl: string;
+  private readonly breaker = new CircuitBreaker({
+    threshold: BREAKER_THRESHOLD,
+    cooldownMs: BREAKER_COOLDOWN_MS,
+  });
 
   constructor(
     private readonly config: ConfigService,
@@ -181,13 +191,19 @@ export class FlexErpAdapter implements ErpQueryPort {
   }
 
   /**
-   * GET with the Flex auth header. On a 401, invalidates the session and
-   * retries once with a fresh token (handles server-side token expiry).
+   * GET with the Flex auth header, wrapped by the circuit breaker (fail fast
+   * when the ERP is down) and a per-request timeout. On a 401, invalidates the
+   * session and retries once with a fresh token (server-side token expiry).
    */
   private async authedGet(url: string): Promise<unknown> {
+    return this.breaker.exec(() => this.doGet(url));
+  }
+
+  private async doGet(url: string): Promise<unknown> {
     try {
       const { data } = await axios.get(url, {
         headers: { authToken: await this.auth.getToken() },
+        timeout: REQUEST_TIMEOUT_MS,
       });
       return data;
     } catch (error: any) {
@@ -195,6 +211,7 @@ export class FlexErpAdapter implements ErpQueryPort {
         this.auth.invalidate();
         const { data } = await axios.get(url, {
           headers: { authToken: await this.auth.getToken() },
+          timeout: REQUEST_TIMEOUT_MS,
         });
         return data;
       }
