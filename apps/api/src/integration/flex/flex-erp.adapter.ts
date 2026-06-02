@@ -23,6 +23,10 @@ const BREAKER_COOLDOWN_MS = 30_000;
  * per-endpoint date formats, the 2-hop product search (Detalhada → getByIds),
  * and the rule that getAll is never used on the hot path.
  *
+ * The circuit breaker is a SINGLE shared instance: a failure in any method
+ * (search, stock, price, …) counts toward tripping it, so when the on-premise
+ * ERP is down the whole adapter fails fast — intentional.
+ *
  * ⚠️ VERIFY before go-live (#51): the auth header is sent as `authToken`
  * (per the doc body text), but the doc is inconsistent (`AuthToken` elsewhere)
  * and the API is case-sensitive. Confirm against the real Flex server.
@@ -191,31 +195,30 @@ export class FlexErpAdapter implements ErpQueryPort {
   }
 
   /**
-   * GET with the Flex auth header, wrapped by the circuit breaker (fail fast
-   * when the ERP is down) and a per-request timeout. On a 401, invalidates the
-   * session and retries once with a fresh token (server-side token expiry).
+   * GET with the Flex auth header. Each underlying HTTP attempt goes through the
+   * circuit breaker, so a 401 (and any transient failure) counts toward tripping
+   * it — intermittent auth instability is not masked by the retry. On a 401 we
+   * invalidate the session and retry ONCE with a fresh token, as a separate
+   * breaker call (a recovered single 401 then resets the breaker, but repeated
+   * 401s accumulate). CircuitOpenError fails fast without touching the ERP.
    */
   private async authedGet(url: string): Promise<unknown> {
-    return this.breaker.exec(() => this.doGet(url));
-  }
-
-  private async doGet(url: string): Promise<unknown> {
     try {
-      const { data } = await axios.get(url, {
-        headers: { authToken: await this.auth.getToken() },
-        timeout: REQUEST_TIMEOUT_MS,
-      });
-      return data;
+      return await this.breaker.exec(() => this.rawGet(url));
     } catch (error: any) {
       if (error?.response?.status === 401) {
         this.auth.invalidate();
-        const { data } = await axios.get(url, {
-          headers: { authToken: await this.auth.getToken() },
-          timeout: REQUEST_TIMEOUT_MS,
-        });
-        return data;
+        return this.breaker.exec(() => this.rawGet(url));
       }
       throw error;
     }
+  }
+
+  private async rawGet(url: string): Promise<unknown> {
+    const { data } = await axios.get(url, {
+      headers: { authToken: await this.auth.getToken() },
+      timeout: REQUEST_TIMEOUT_MS,
+    });
+    return data;
   }
 }

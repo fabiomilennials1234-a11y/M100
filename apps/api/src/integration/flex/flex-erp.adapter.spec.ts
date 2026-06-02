@@ -393,4 +393,23 @@ describe('FlexErpAdapter resilience', () => {
     await expect(adapter.searchProducts('x', 1)).rejects.toThrow();
     expect(mockedAxios.get).not.toHaveBeenCalled();
   });
+
+  it('counts a 401 attempt toward the breaker (auth instability is not masked by retry)', async () => {
+    const { adapter } = setup();
+    const down = new Error('ERP down');
+    const unauthorized = Object.assign(new Error('Unauthorized'), { response: { status: 401 } });
+
+    for (let i = 0; i < 4; i++) {
+      mockedAxios.get.mockRejectedValueOnce(down);
+      await expect(adapter.searchProducts('x', 1)).rejects.toThrow();
+    }
+    // 5th call: a 401 — its first attempt is failure #5 → breaker opens; the
+    // retry then short-circuits instead of silently recovering.
+    mockedAxios.get.mockRejectedValueOnce(unauthorized);
+    await expect(adapter.searchProducts('x', 1)).rejects.toThrow();
+
+    mockedAxios.get.mockClear();
+    await expect(adapter.searchProducts('x', 1)).rejects.toThrow();
+    expect(mockedAxios.get).not.toHaveBeenCalled();
+  });
 });

@@ -22,6 +22,7 @@ export class CircuitBreaker {
   private state: State = 'closed';
   private failures = 0;
   private openedAt = 0;
+  private probing = false;
 
   constructor(private readonly opts: Options) {}
 
@@ -32,6 +33,14 @@ export class CircuitBreaker {
       } else {
         throw new CircuitOpenError();
       }
+    }
+
+    // Half-open allows exactly ONE probe in flight; concurrent calls fail fast.
+    if (this.state === 'half-open') {
+      if (this.probing) {
+        throw new CircuitOpenError();
+      }
+      this.probing = true;
     }
 
     try {
@@ -47,6 +56,7 @@ export class CircuitBreaker {
   private onSuccess(): void {
     this.failures = 0;
     this.state = 'closed';
+    this.probing = false;
   }
 
   private onFailure(): void {
@@ -55,5 +65,6 @@ export class CircuitBreaker {
       this.state = 'open';
       this.openedAt = Date.now();
     }
+    this.probing = false;
   }
 }

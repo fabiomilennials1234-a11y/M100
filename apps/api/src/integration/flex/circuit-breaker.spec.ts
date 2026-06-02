@@ -37,6 +37,28 @@ describe('CircuitBreaker', () => {
     await expect(cb.exec(fail)).rejects.toThrow('boom');
   });
 
+  it('allows only one probe in half-open under concurrency', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    const cb = new CircuitBreaker({ threshold: 1, cooldownMs: 1000 });
+    await expect(cb.exec(fail)).rejects.toThrow('boom'); // opens
+
+    jest.setSystemTime(new Date('2026-01-01T00:00:02Z')); // cooled → half-open
+    let release!: (v: string) => void;
+    const slow = jest.fn(() => new Promise<string>((r) => { release = r; }));
+    const second = jest.fn(ok);
+
+    const p1 = cb.exec(slow); // becomes the single probe (pending)
+    const p2 = cb.exec(second); // concurrent → must fail fast
+
+    await expect(p2).rejects.toBeInstanceOf(CircuitOpenError);
+    expect(second).not.toHaveBeenCalled();
+
+    release('ok');
+    expect(await p1).toBe('ok');
+    expect(slow).toHaveBeenCalledTimes(1);
+  });
+
   it('re-opens if the half-open probe fails', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-01-01T00:00:00Z'));
