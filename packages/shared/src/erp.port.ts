@@ -15,6 +15,13 @@ export interface ProductSummary {
   unidadeVenda: string;
 }
 
+/** Stock availability for an item in a Filial. */
+export interface StockInfo {
+  idItem: number;
+  disponivel: boolean;
+  quantidade: number;
+}
+
 /** Narrow customer view used for identity resolution — not the raw Flex client. */
 export interface CustomerSummary {
   cdCliente: number;
@@ -38,4 +45,7 @@ export interface ErpQueryPort {
    * Used to bind a WhatsApp phone to a Cliente Flex (with phone-match check).
    */
   getCustomerByDocument(cpfCnpj: string): Promise<CustomerSummary | null>;
+
+  /** Stock availability of an item within a Filial. */
+  getStock(idItem: number, cdFilial: number): Promise<StockInfo>;
 }

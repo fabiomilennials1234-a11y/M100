@@ -1,6 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { CustomerSummary, ErpQueryPort, ProductSummary } from '@motor100/shared';
+import {
+  CustomerSummary,
+  ErpQueryPort,
+  ProductSummary,
+  StockInfo,
+} from '@motor100/shared';
 import axios from 'axios';
 import { FlexAuthSession } from './flex-auth-session';
 
@@ -52,6 +57,19 @@ export class FlexErpAdapter implements ErpQueryPort {
       telefones,
       vendedorId: c.cdVendedor ?? null,
     };
+  }
+
+  async getStock(idItem: number, cdFilial: number): Promise<StockInfo> {
+    // NOTE: the param is `item` (not idItem) — Flex case/name gotcha.
+    const params = new URLSearchParams({
+      item: String(idItem),
+      cdFilial: String(cdFilial),
+    });
+    const data = (await this.authedGet(
+      `${this.baseUrl}/WmsEstoque/consultar?${params.toString()}`,
+    )) as any;
+    const quantidade = Number(data?.qtDisponivel ?? data?.qtAtual ?? 0) || 0;
+    return { idItem, disponivel: quantidade > 0, quantidade };
   }
 
   /** Hop 1: free-text search → list of idItem. Vehicle/ficha flags must be true. */

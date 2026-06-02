@@ -179,3 +179,37 @@ describe('FlexErpAdapter.getCustomerByDocument', () => {
     expect(customer?.telefones).toEqual(['49 3000-0000']);
   });
 });
+
+describe('FlexErpAdapter.getStock', () => {
+  afterEach(() => jest.clearAllMocks());
+
+  it('queries WmsEstoque with the item param (not idItem) and the Filial', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({ data: { qtDisponivel: 5, qtAtual: 7 } });
+
+    const stock = await adapter.getStock(106, 2);
+
+    const [url, cfg] = mockedAxios.get.mock.calls[0];
+    expect(url).toContain('/WmsEstoque/consultar');
+    expect(url).toContain('item=106');
+    expect(url).toContain('cdFilial=2');
+    expect(cfg).toEqual({ headers: { authToken: 'TK' } });
+    expect(stock).toEqual({ idItem: 106, disponivel: true, quantidade: 5 });
+  });
+
+  it('reports unavailable when quantity is zero', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({ data: { qtDisponivel: 0 } });
+
+    const stock = await adapter.getStock(106, 1);
+    expect(stock).toEqual({ idItem: 106, disponivel: false, quantidade: 0 });
+  });
+
+  it('defaults to zero/unavailable when the body lacks quantity fields', async () => {
+    const { adapter } = setup();
+    mockedAxios.get.mockResolvedValueOnce({ data: {} });
+
+    const stock = await adapter.getStock(106, 1);
+    expect(stock).toEqual({ idItem: 106, disponivel: false, quantidade: 0 });
+  });
+});

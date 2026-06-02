@@ -43,6 +43,24 @@ export class ErpToolRegistry implements ToolRegistry {
       {
         type: 'function',
         function: {
+          name: 'check_stock',
+          description:
+            'Verifica a disponibilidade e a quantidade em estoque de um produto pelo seu idItem (obtido antes via get_product_info). Use quando o cliente perguntar se há em estoque ou quanto tem.',
+          parameters: {
+            type: 'object',
+            properties: {
+              idItem: {
+                type: 'number',
+                description: 'Identificador do produto (idItem) retornado por get_product_info.',
+              },
+            },
+            required: ['idItem'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
           name: 'identify_customer',
           description:
             'Confirma a identidade do cliente pelo CPF ou CNPJ informado por ele. Necessário antes de consultar pedidos ou preço personalizado. Só vincula se o telefone bater com o cadastro.',
@@ -73,6 +91,13 @@ export class ErpToolRegistry implements ToolRegistry {
           ctx.cdFilial,
         );
         return { products };
+      }
+      case 'check_stock': {
+        const stock = await this.erp.getStock(
+          Number(args.idItem ?? 0),
+          ctx.cdFilial,
+        );
+        return stock;
       }
       case 'identify_customer': {
         const result = await this.identity.resolve(

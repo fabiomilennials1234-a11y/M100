@@ -7,7 +7,7 @@ function setup() {
   } as unknown as ErpQueryPort & { getCustomerByDocument: jest.Mock };
   const prisma = {
     identityBinding: {
-      findUnique: jest.fn(),
+      findUnique: jest.fn().mockResolvedValue(null),
       upsert: jest.fn().mockResolvedValue({}),
     },
   };
@@ -27,15 +27,16 @@ describe('IdentityResolver', () => {
     const { resolver, erp, prisma } = setup();
     erp.getCustomerByDocument.mockResolvedValue(customer);
 
-    const result = await resolver.resolve('+554999991234', '07100189918');
+    // WhatsApp form (DDI 55 + DDD 49 + 9 + número) of the cadastro celular.
+    const result = await resolver.resolve('+5549999991234', '07100189918');
 
     expect(result.verified).toBe(true);
     expect(result.cdCliente).toBe(8401);
     expect(result.maskedDocument).toMatch(/918$/);
     expect(prisma.identityBinding.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { phone: '+554999991234' },
-        create: expect.objectContaining({ phone: '+554999991234', cdCliente: 8401 }),
+        where: { phone: '+5549999991234' },
+        create: expect.objectContaining({ phone: '+5549999991234', cdCliente: 8401 }),
       }),
     );
   });
@@ -51,11 +52,63 @@ describe('IdentityResolver', () => {
     expect(prisma.identityBinding.upsert).not.toHaveBeenCalled();
   });
 
+  it('rejects a cross-DDD collision (same last 8 digits, different area code)', async () => {
+    const { resolver, erp, prisma } = setup();
+    erp.getCustomerByDocument.mockResolvedValue(customer);
+
+    // Same trailing 8 digits (99991234) but DDD 11 instead of 49 — must NOT match.
+    const result = await resolver.resolve('+5511999991234', '07100189918');
+
+    expect(result.verified).toBe(false);
+    expect(result.reason).toBe('phone_mismatch');
+    expect(prisma.identityBinding.upsert).not.toHaveBeenCalled();
+  });
+
+  it('reports no_phones_on_record when the cadastro has no phones', async () => {
+    const { resolver, erp, prisma } = setup();
+    erp.getCustomerByDocument.mockResolvedValue({ ...customer, telefones: [] });
+
+    const result = await resolver.resolve('+5549999991234', '07100189918');
+
+    expect(result.verified).toBe(false);
+    expect(result.reason).toBe('no_phones_on_record');
+    expect(prisma.identityBinding.upsert).not.toHaveBeenCalled();
+  });
+
+  it('refuses to rebind a phone already linked to a different cliente (anti-hijack)', async () => {
+    const { resolver, erp, prisma } = setup();
+    erp.getCustomerByDocument.mockResolvedValue(customer); // cdCliente 8401
+    prisma.identityBinding.findUnique.mockResolvedValue({
+      phone: '+5549999991234',
+      cdCliente: 9999, // already bound to someone else
+    });
+
+    const result = await resolver.resolve('+5549999991234', '07100189918');
+
+    expect(result.verified).toBe(false);
+    expect(result.reason).toBe('binding_conflict');
+    expect(prisma.identityBinding.upsert).not.toHaveBeenCalled();
+  });
+
+  it('is idempotent when re-binding the same phone to the same cliente', async () => {
+    const { resolver, erp, prisma } = setup();
+    erp.getCustomerByDocument.mockResolvedValue(customer);
+    prisma.identityBinding.findUnique.mockResolvedValue({
+      phone: '+5549999991234',
+      cdCliente: 8401, // same cliente
+    });
+
+    const result = await resolver.resolve('+5549999991234', '07100189918');
+
+    expect(result.verified).toBe(true);
+    expect(prisma.identityBinding.upsert).toHaveBeenCalled();
+  });
+
   it('reports not_found when there is no cadastro for the document', async () => {
     const { resolver, erp, prisma } = setup();
     erp.getCustomerByDocument.mockResolvedValue(null);
 
-    const result = await resolver.resolve('+554999991234', '00000000000');
+    const result = await resolver.resolve('+5549999991234', '00000000000');
 
     expect(result.verified).toBe(false);
     expect(result.reason).toBe('not_found');
@@ -64,9 +117,9 @@ describe('IdentityResolver', () => {
 
   it('returns an existing verified binding for a phone', async () => {
     const { resolver, prisma } = setup();
-    prisma.identityBinding.findUnique.mockResolvedValue({ phone: '+554999991234', cdCliente: 8401 });
+    prisma.identityBinding.findUnique.mockResolvedValue({ phone: '+5549999991234', cdCliente: 8401 });
 
-    expect(await resolver.getBinding('+554999991234')).toEqual({ cdCliente: 8401 });
+    expect(await resolver.getBinding('+5549999991234')).toEqual({ cdCliente: 8401 });
   });
 
   it('returns null when no binding exists for a phone', async () => {

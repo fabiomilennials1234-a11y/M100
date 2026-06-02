@@ -7,7 +7,8 @@ const CTX: ToolContext = { cdFilial: 1, phone: '+554999991234' };
 function setup() {
   const erp = {
     searchProducts: jest.fn(),
-  } as unknown as ErpQueryPort & { searchProducts: jest.Mock };
+    getStock: jest.fn(),
+  } as unknown as ErpQueryPort & { searchProducts: jest.Mock; getStock: jest.Mock };
   const identity = {
     resolve: jest.fn(),
     getBinding: jest.fn(),
@@ -68,6 +69,23 @@ describe('ErpToolRegistry', () => {
     expect(erp.searchProducts).toHaveBeenCalledWith(expected, 1);
   });
 
+  it('exposes check_stock with an idItem param', () => {
+    const { registry } = setup();
+    const tool = registry.definitions().find((d) => d.function.name === 'check_stock');
+    expect(tool).toBeDefined();
+    expect(tool!.function.parameters.required).toContain('idItem');
+  });
+
+  it('dispatches check_stock to getStock with idItem and the context Filial', async () => {
+    const { registry, erp } = setup();
+    erp.getStock.mockResolvedValue({ idItem: 106, disponivel: true, quantidade: 4 });
+
+    const result = await registry.dispatch('check_stock', { idItem: 106 }, { ...CTX, cdFilial: 2 });
+
+    expect(erp.getStock).toHaveBeenCalledWith(106, 2);
+    expect(result).toEqual({ idItem: 106, disponivel: true, quantidade: 4 });
+  });
+
   it('exposes identify_customer with a document param', () => {
     const { registry } = setup();
     const tool = registry.definitions().find((d) => d.function.name === 'identify_customer');
@@ -89,6 +107,33 @@ describe('ErpToolRegistry', () => {
 
     expect(identity.resolve).toHaveBeenCalledWith('+554999991234', '07100189918');
     expect(result).toEqual({ verified: true, nome: 'Fulano', documento: '...918', motivo: undefined });
-    expect(JSON.stringify(result)).not.toContain('8401'); // internal id never reaches the model
+    expect(result).not.toHaveProperty('cdCliente'); // internal id never reaches the model
+    expect(JSON.stringify(result)).not.toContain('8401');
+  });
+
+  it.each(['not_found', 'phone_mismatch', 'binding_conflict'])(
+    'maps identity failure reason %s to motivo for the model',
+    async (reason) => {
+      const { registry, identity } = setup();
+      (identity.resolve as jest.Mock).mockResolvedValue({ verified: false, reason });
+
+      const result: any = await registry.dispatch('identify_customer', { document: 'x' }, CTX);
+
+      expect(result.verified).toBe(false);
+      expect(result.motivo).toBe(reason);
+    },
+  );
+
+  it('every advertised tool is dispatchable (definitions ↔ dispatch stay in sync)', async () => {
+    const { registry, erp, identity } = setup();
+    erp.searchProducts.mockResolvedValue([]);
+    erp.getStock.mockResolvedValue({ idItem: 0, disponivel: false, quantidade: 0 });
+    (identity.resolve as jest.Mock).mockResolvedValue({ verified: false, reason: 'not_found' });
+
+    for (const def of registry.definitions()) {
+      await expect(
+        registry.dispatch(def.function.name, {}, CTX),
+      ).resolves.toBeDefined();
+    }
   });
 });
