@@ -26,3 +26,6 @@ coverage/
 
 # Build
 *.js.map
+
+# Obsidian volatile UI state
+Obsidian/.obsidian/workspace.json
